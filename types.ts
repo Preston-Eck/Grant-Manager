@@ -5,29 +5,58 @@ export enum GrantStatus {
   Pending = 'Pending'
 }
 
+export interface BudgetCategory {
+  id: string;
+  name: string; // e.g., "Personnel", "Travel"
+  allocation: number;
+  purpose: string;
+}
+
+export interface Deliverable {
+  id: string;
+  sectionReference: string; // e.g., "Section 4.1.a"
+  description: string;
+  allocatedValue: number;
+  dueDate: string;
+  status: 'Pending' | 'In Progress' | 'Completed' | 'Delayed';
+  budgetCategories: BudgetCategory[];
+}
+
+export interface ComplianceReport {
+  id: string;
+  title: string; // e.g., "Q1 Performance Report"
+  dueDate: string;
+  submittedDate?: string;
+  type: 'Financial' | 'Programmatic' | 'Audit' | 'Other';
+  status: 'Pending' | 'Submitted' | 'Overdue' | 'Accepted';
+  comments?: string;
+  attachmentPath?: string;
+}
+
 export interface Grant {
   id: string;
   name: string;
   funder: string;
-  budget: number;
-  spent: number;
+  purpose: string; // NEW
+  totalAward: number; // Renamed from budget for clarity
   startDate: string;
   endDate: string;
   status: GrantStatus;
-  description?: string;
+  deliverables: Deliverable[]; // NEW
+  reports: ComplianceReport[]; // NEW
 }
 
-export interface Transaction {
+export interface Expenditure { // Renamed from Transaction
   id: string;
   grantId: string;
+  deliverableId: string; // NEW
+  categoryId: string; // NEW
   date: string;
   vendor: string;
-  category: string;
   amount: number;
-  description?: string;
+  justification: string; // NEW (Long text)
   receiptUrl?: string; 
   status: 'Pending' | 'Approved' | 'Rejected';
-  // New Fields
   purchaser?: string;
   notes?: string;
 }
@@ -39,15 +68,9 @@ export interface EmailTemplate {
   body: string;
 }
 
-export enum ReportType {
-  ExecutiveSummary = 'Executive Summary',
-  BudgetVsActuals = 'Budget vs. Actuals',
-  AuditorExport = 'Auditor Export',
-}
-
 export interface IngestionItem {
   id: string;
-  rawImage: string; // Base64 for preview
-  parsedData: Partial<Transaction> | null;
+  rawImage: string; 
+  parsedData: Partial<Expenditure> | null;
   status: 'Scanning' | 'Review' | 'Approved';
 }

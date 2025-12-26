@@ -6,15 +6,14 @@ const ai = new GoogleGenAI({ apiKey });
 export const parseReceiptImage = async (base64Image: string): Promise<string> => {
   if (!apiKey) throw new Error("API Key missing");
 
-  // 1. Dynamic Mime Type Detection
-  let mimeType = 'image/jpeg'; // Default
+  // Dynamic Mime Type Detection
+  let mimeType = 'image/jpeg';
   if (base64Image.startsWith('data:image/png;')) {
     mimeType = 'image/png';
   } else if (base64Image.startsWith('data:image/webp;')) {
     mimeType = 'image/webp';
   }
 
-  // 2. Strip prefix for the API payload
   const base64Data = base64Image.split(',')[1] || base64Image;
 
   try {
@@ -22,24 +21,12 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
       model: 'gemini-1.5-flash',
       contents: {
         parts: [
-          {
-            inlineData: {
-              mimeType: mimeType, 
-              data: base64Data
-            }
-          },
-          {
-            text: `Extract data from this receipt. Return ONLY a JSON object (no markdown) with these keys: 
-            - "vendor" (string)
-            - "date" (YYYY-MM-DD string)
-            - "amount" (number)
-            - "category" (string, guess based on vendor e.g., Supplies, Travel, Meals).`
-          }
+          { inlineData: { mimeType: mimeType, data: base64Data } },
+          { text: `Extract receipt data. Return ONLY a valid JSON object. Keys: "vendor" (string), "date" (YYYY-MM-DD), "amount" (number). No markdown.` }
         ]
       }
     });
 
-    // 3. Fallback and Clean
     const text = response.text || "{}";
     return text.replace(/```json/g, '').replace(/```/g, '').trim(); 
   } catch (error) {
@@ -48,56 +35,25 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
   }
 };
 
-export const generateGrantSection = async (
-  topic: string,
-  grantName: string,
-  funder: string,
-  keyDetails: string
-): Promise<string> => {
+export const generateGrantSection = async (topic: string, grantName: string, funder: string, keyDetails: string): Promise<string> => {
   if (!apiKey) throw new Error("API Key missing");
-
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-1.5-flash',
-      contents: `You are a professional grant writer. Write the "${topic}" section for a grant proposal.
-      
-      Grant Name: ${grantName}
-      Funder: ${funder}
-      Key Details provided by user: ${keyDetails}
-      
-      Keep it professional, persuasive, and concise. formatting: clean paragraphs.`
+      contents: `Write "${topic}" for grant: ${grantName} (Funder: ${funder}). Details: ${keyDetails}`
     });
-
     return response.text || "";
-  } catch (error) {
-    console.error("Gemini Text Gen Error:", error);
-    return "Error generating text.";
-  }
+  } catch (error) { return "Error generating text."; }
 };
 
-export const generateEmailTemplate = async (
-  topic: string,
-  context: string
-): Promise<{ subject: string; body: string }> => {
+export const generateEmailTemplate = async (topic: string, context: string): Promise<{ subject: string; body: string }> => {
   if (!apiKey) throw new Error("API Key missing");
-
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-1.5-flash',
-      contents: `You are an expert grant manager. Create an email template.
-      Topic: ${topic}
-      Context/Tone: ${context}
-      
-      Return valid JSON with keys "subject" and "body".
-      The body should use placeholders like {{GrantName}}, {{Vendor}}, {{Date}} where appropriate.`,
-      config: {
-        responseMimeType: 'application/json'
-      }
+      contents: `Email template for "${topic}", context "${context}". Return JSON {subject, body}`,
+      config: { responseMimeType: 'application/json' }
     });
-    
     return JSON.parse(response.text || '{}');
-  } catch (error) {
-    console.error("Gemini Template Gen Error:", error);
-    return { subject: "Error", body: "Could not generate template." };
-  }
+  } catch (error) { return { subject: "", body: "" }; }
 };

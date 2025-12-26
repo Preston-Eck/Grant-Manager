@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from './components/ui/Layout';
 import { Dashboard } from './components/Dashboard';
-import { ExpenseInput } from './components/ExpenseInput';
+import { ExpenditureInput } from './components/ExpenditureInput'; // Updated Import
 import { GrantWizard } from './components/GrantWizard';
 import { Reporting } from './components/Reporting';
 import { Communication } from './components/Communication';
@@ -20,13 +20,12 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;
-      case 'ingestion': return <ExpenseInput onNavigate={handleNavigate} />;
+      case 'ingestion': return <ExpenditureInput onNavigate={handleNavigate} />;
       case 'wizard': return <GrantWizard />;
       case 'reporting': return <Reporting />;
       case 'communication': return <Communication initialData={sharedData} />;
       case 'grants': return <GrantManager />;
       case 'settings': return <DataManagement />;
-      // Removed feedback case
       default: return <Dashboard onNavigate={handleNavigate} />;
     }
   };

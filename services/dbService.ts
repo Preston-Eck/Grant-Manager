@@ -1,4 +1,4 @@
-import { Grant, Transaction, EmailTemplate, GrantStatus } from '../types';
+import { Grant, Expenditure, EmailTemplate, GrantStatus } from '../types';
 
 // Initial Data Seeding
 const INITIAL_GRANTS: Grant[] = [
@@ -6,33 +6,37 @@ const INITIAL_GRANTS: Grant[] = [
     id: 'g-1',
     name: 'Community Health Initiative',
     funder: 'Global Wellness Foundation',
-    budget: 50000,
-    spent: 12450.50,
+    purpose: 'To improve access to clean water in rural districts.',
+    totalAward: 50000,
     startDate: '2023-01-01',
     endDate: '2023-12-31',
-    status: GrantStatus.Active
-  },
-  {
-    id: 'g-2',
-    name: 'STEM Education Outreach',
-    funder: 'TechForFuture',
-    budget: 25000,
-    spent: 24000.00,
-    startDate: '2023-03-15',
-    endDate: '2023-09-15',
-    status: GrantStatus.Active
+    status: GrantStatus.Active,
+    reports: [],
+    deliverables: [
+      {
+        id: 'd-1',
+        sectionReference: 'Obj 1.1',
+        description: 'Install 5 Water Filtration Systems',
+        allocatedValue: 30000,
+        dueDate: '2023-06-30',
+        status: 'In Progress',
+        budgetCategories: [
+           { id: 'c-1', name: 'Equipment', allocation: 20000, purpose: 'Filters and pumps' },
+           { id: 'c-2', name: 'Labor', allocation: 10000, purpose: 'Installation team' }
+        ]
+      }
+    ]
   }
 ];
 
 const INITIAL_TEMPLATES: EmailTemplate[] = [
   { id: 't-1', title: 'Grant Kickoff', subject: 'Grant Kickoff: {{GrantName}}', body: 'Dear Team,\n\nWe are pleased to announce the start of {{GrantName}}. Please review the attached compliance documents.\n\nBest,\nGrant Admin' },
-  { id: 't-2', title: 'Receipt Correction Needed', subject: 'Action Required: Invalid Receipt for {{Vendor}}', body: 'Hello,\n\nThe receipt submitted for {{Vendor}} on {{Date}} is missing tax details. Please provide a valid tax invoice.\n\nThank you.' },
-  { id: 't-3', title: '90-Day Closeout', subject: 'Urgent: 90-Day Closeout for {{GrantName}}', body: 'Team,\n\nWe are approaching the 90-day closeout window. Please ensure all expenses are logged.' },
+  { id: 't-2', title: 'Receipt Correction Needed', subject: 'Action Required: Invalid Receipt for {{Vendor}}', body: 'Hello,\n\nThe receipt submitted for {{Vendor}} on {{Date}} is missing tax details. Please provide a valid tax invoice.\n\nThank you.' }
 ];
 
 class DBService {
   private grantsKey = 'eckerdt_grants';
-  private transactionsKey = 'eckerdt_transactions';
+  private expendituresKey = 'eckerdt_expenditures';
   private templatesKey = 'eckerdt_templates';
 
   constructor() {
@@ -43,8 +47,8 @@ class DBService {
     if (!localStorage.getItem(this.grantsKey)) {
       localStorage.setItem(this.grantsKey, JSON.stringify(INITIAL_GRANTS));
     }
-    if (!localStorage.getItem(this.transactionsKey)) {
-      localStorage.setItem(this.transactionsKey, JSON.stringify([]));
+    if (!localStorage.getItem(this.expendituresKey)) {
+      localStorage.setItem(this.expendituresKey, JSON.stringify([]));
     }
     if (!localStorage.getItem(this.templatesKey)) {
       localStorage.setItem(this.templatesKey, JSON.stringify(INITIAL_TEMPLATES));
@@ -66,24 +70,16 @@ class DBService {
     localStorage.setItem(this.grantsKey, JSON.stringify(grants));
   }
 
-  getTransactions(grantId?: string): Transaction[] {
-    const all = JSON.parse(localStorage.getItem(this.transactionsKey) || '[]');
-    if (grantId) return all.filter((t: Transaction) => t.grantId === grantId);
+  getExpenditures(grantId?: string): Expenditure[] {
+    const all = JSON.parse(localStorage.getItem(this.expendituresKey) || '[]');
+    if (grantId) return all.filter((t: Expenditure) => t.grantId === grantId);
     return all;
   }
 
-  addTransaction(tx: Transaction) {
-    const all = this.getTransactions();
+  addExpenditure(tx: Expenditure) {
+    const all = this.getExpenditures();
     all.push(tx);
-    localStorage.setItem(this.transactionsKey, JSON.stringify(all));
-
-    // Update grant spent amount
-    const grants = this.getGrants();
-    const grant = grants.find(g => g.id === tx.grantId);
-    if (grant) {
-      grant.spent += tx.amount;
-      this.saveGrant(grant);
-    }
+    localStorage.setItem(this.expendituresKey, JSON.stringify(all));
   }
 
   getTemplates(): EmailTemplate[] {
@@ -106,43 +102,23 @@ class DBService {
     localStorage.setItem(this.templatesKey, JSON.stringify(templates));
   }
 
-  /**
-   * Returns the complete state of the local database for diagnostic reporting.
-   */
   getFullState() {
     return {
       grants: this.getGrants(),
-      transactions: this.getTransactions(),
+      expenditures: this.getExpenditures(),
       templates: this.getTemplates(),
-      storageKeys: {
-        grants: this.grantsKey,
-        transactions: this.transactionsKey,
-        templates: this.templatesKey
-      },
       timestamp: new Date().toISOString()
     };
   }
-  /**
-   * Replaces current database state with provided backup data.
-   * @param data The parsed JSON object from a backup file
-   */
+
   importState(data: any): boolean {
     try {
-      // Basic validation to ensure this is a valid backup file
-      if (!data.grants || !data.transactions || !data.templates) {
+      if (!data.grants || !data.expenditures) {
         throw new Error("Invalid backup file format.");
       }
-
-      // 1. Clear current state (Optional: could merge, but overwrite is safer for migration)
-      localStorage.removeItem(this.grantsKey);
-      localStorage.removeItem(this.transactionsKey);
-      localStorage.removeItem(this.templatesKey);
-
-      // 2. Load new state
       localStorage.setItem(this.grantsKey, JSON.stringify(data.grants));
-      localStorage.setItem(this.transactionsKey, JSON.stringify(data.transactions));
-      localStorage.setItem(this.templatesKey, JSON.stringify(data.templates));
-
+      localStorage.setItem(this.expendituresKey, JSON.stringify(data.expenditures));
+      if (data.templates) localStorage.setItem(this.templatesKey, JSON.stringify(data.templates));
       return true;
     } catch (e) {
       console.error("Import failed:", e);
