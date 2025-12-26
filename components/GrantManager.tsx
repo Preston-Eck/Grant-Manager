@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, GrantStatus, Deliverable, ComplianceReport, BudgetCategory } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-import { Plus, Edit2, Trash2, X, Save, Calendar, CheckCircle, AlertTriangle, ChevronRight, ChevronDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Save, Calendar, ChevronRight } from 'lucide-react';
 
 export const GrantManager: React.FC = () => {
   const [grants, setGrants] = useState<Grant[]>([]);
@@ -101,7 +101,8 @@ export const GrantManager: React.FC = () => {
                 <h3 className="font-bold text-lg text-slate-800">{grant.name}</h3>
                 <p className="text-slate-500 text-sm">{grant.funder}</p>
                 <div className="mt-2 flex space-x-4 text-sm text-slate-600">
-                   <span className="font-mono bg-slate-100 px-2 py-1 rounded">Award: ${grant.totalAward.toLocaleString()}</span>
+                   {/* SAFE CHECK ADDED HERE */}
+                   <span className="font-mono bg-slate-100 px-2 py-1 rounded">Award: ${(grant.totalAward || 0).toLocaleString()}</span>
                    <span>Deliverables: {grant.deliverables?.length || 0}</span>
                 </div>
               </div>
@@ -155,7 +156,7 @@ export const GrantManager: React.FC = () => {
         {activeTab === 'deliverables' && (
           <div className="space-y-6">
             <div className={`p-4 rounded-lg flex justify-between items-center ${unallocated < 0 ? 'bg-red-100 text-red-800' : unallocated > 0 ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>
-               <span className="font-bold">Grant Total: ${currentGrant.totalAward?.toLocaleString()}</span>
+               <span className="font-bold">Grant Total: ${(currentGrant.totalAward || 0).toLocaleString()}</span>
                <span className="font-bold">Allocated: ${totalAllocated.toLocaleString()}</span>
                <span className="font-bold">Remaining: ${unallocated.toLocaleString()}</span>
             </div>
@@ -200,38 +201,23 @@ export const GrantManager: React.FC = () => {
 
         {/* REPORTS TAB */}
         {activeTab === 'reports' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
              {currentGrant.reports?.map((rep, idx) => (
-               <div key={rep.id} className="bg-white p-4 border border-slate-200 rounded-lg shadow-sm">
-                 <div className="flex gap-4 mb-3">
-                    <div className="flex-1">
-                        <HighContrastInput label="Report Title" value={rep.title} onChange={e => updateReport(idx, 'title', e.target.value)} />
-                    </div>
-                    <div className="w-40">
-                        <HighContrastSelect label="Type" options={[{value:'Financial',label:'Financial'},{value:'Programmatic',label:'Programmatic'},{value:'Audit',label:'Audit'}]} value={rep.type} onChange={e => updateReport(idx, 'type', e.target.value)} />
-                    </div>
-                    <div className="w-40">
-                        <HighContrastSelect label="Status" options={[{value:'Pending',label:'Pending'},{value:'Submitted',label:'Submitted'},{value:'Accepted',label:'Accepted'},{value:'Overdue',label:'Overdue'}]} value={rep.status} onChange={e => updateReport(idx, 'status', e.target.value)} />
-                    </div>
+               <div key={rep.id} className="bg-white p-4 border border-slate-200 rounded-lg flex flex-col gap-4">
+                 <div className="flex gap-4 items-end">
+                    <div className="flex-1"><HighContrastInput label="Report Title" value={rep.title} onChange={e => updateReport(idx, 'title', e.target.value)} /></div>
+                    <div className="w-32"><HighContrastInput label="Due Date" type="date" value={rep.dueDate} onChange={e => updateReport(idx, 'dueDate', e.target.value)} /></div>
+                    <div className="w-32"><HighContrastSelect label="Type" options={[{value:'Financial',label:'Financial'},{value:'Programmatic',label:'Programmatic'},{value:'Audit',label:'Audit'}]} value={rep.type} onChange={e => updateReport(idx, 'type', e.target.value)} /></div>
+                    <div className="w-32"><HighContrastSelect label="Status" options={[{value:'Pending',label:'Pending'},{value:'Submitted',label:'Submitted'}]} value={rep.status} onChange={e => updateReport(idx, 'status', e.target.value)} /></div>
+                    <button onClick={() => {const r = [...currentGrant.reports!]; r.splice(idx, 1); setCurrentGrant({...currentGrant, reports: r})}} className="text-red-500 p-2"><Trash2 size={20}/></button>
                  </div>
-                 
-                 <div className="grid grid-cols-3 gap-4 items-center">
-                    <HighContrastInput label="Due Date" type="date" value={rep.dueDate} onChange={e => updateReport(idx, 'dueDate', e.target.value)} />
+                 <div className="grid grid-cols-2 gap-4">
                     <HighContrastInput label="Submitted Date" type="date" value={rep.submittedDate || ''} onChange={e => updateReport(idx, 'submittedDate', e.target.value)} />
-                    <div className="flex items-end h-full pb-1">
-                        <button onClick={() => {const r = [...currentGrant.reports!]; r.splice(idx, 1); setCurrentGrant({...currentGrant, reports: r})}} className="text-red-500 text-sm flex items-center hover:underline"><Trash2 size={16} className="mr-1"/> Remove Report</button>
-                    </div>
-                 </div>
-
-                 <div className="mt-3">
-                    <HighContrastTextArea label="Comments / Notes" rows={2} value={rep.comments || ''} onChange={e => updateReport(idx, 'comments', e.target.value)} />
+                    <HighContrastTextArea label="Comments" rows={1} value={rep.comments || ''} onChange={e => updateReport(idx, 'comments', e.target.value)} />
                  </div>
                </div>
              ))}
-             
-             <button onClick={addReport} className="w-full py-3 bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 font-bold hover:bg-slate-200 hover:border-slate-400 transition-colors">
-                + Add Required Report
-             </button>
+             <button onClick={addReport} className="w-full py-3 bg-slate-100 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Add Required Report</button>
           </div>
         )}
       </div>
