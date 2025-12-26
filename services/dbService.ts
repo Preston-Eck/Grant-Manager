@@ -122,6 +122,33 @@ class DBService {
       timestamp: new Date().toISOString()
     };
   }
+  /**
+   * Replaces current database state with provided backup data.
+   * @param data The parsed JSON object from a backup file
+   */
+  importState(data: any): boolean {
+    try {
+      // Basic validation to ensure this is a valid backup file
+      if (!data.grants || !data.transactions || !data.templates) {
+        throw new Error("Invalid backup file format.");
+      }
+
+      // 1. Clear current state (Optional: could merge, but overwrite is safer for migration)
+      localStorage.removeItem(this.grantsKey);
+      localStorage.removeItem(this.transactionsKey);
+      localStorage.removeItem(this.templatesKey);
+
+      // 2. Load new state
+      localStorage.setItem(this.grantsKey, JSON.stringify(data.grants));
+      localStorage.setItem(this.transactionsKey, JSON.stringify(data.transactions));
+      localStorage.setItem(this.templatesKey, JSON.stringify(data.templates));
+
+      return true;
+    } catch (e) {
+      console.error("Import failed:", e);
+      return false;
+    }
+  }
 }
 
 export const db = new DBService();
