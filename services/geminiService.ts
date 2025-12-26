@@ -17,9 +17,9 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
   const base64Data = base64Image.split(',')[1] || base64Image;
 
   try {
-    // FIX: Changed model to 'gemini-1.5-flash-001' to fix 404 errors
+    // FIX: Reverted to standard model name
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-001', 
+      model: 'gemini-1.5-flash', 
       contents: {
         parts: [
           { inlineData: { mimeType: mimeType, data: base64Data } },
@@ -40,7 +40,7 @@ export const generateGrantSection = async (topic: string, grantName: string, fun
   if (!apiKey) throw new Error("API Key missing");
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-001',
+      model: 'gemini-1.5-flash',
       contents: `Write "${topic}" for grant: ${grantName} (Funder: ${funder}). Details: ${keyDetails}`
     });
     return response.text || "";
@@ -51,7 +51,7 @@ export const generateEmailTemplate = async (topic: string, context: string): Pro
   if (!apiKey) throw new Error("API Key missing");
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-001',
+      model: 'gemini-1.5-flash',
       contents: `Email template for "${topic}", context "${context}". Return JSON {subject, body}`,
       config: { responseMimeType: 'application/json' }
     });

@@ -34,7 +34,6 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     setGrants(db.getGrants()); 
     setExpenditures(db.getExpenditures());
 
-    // Handle Pre-fill from other tabs (Grant Manager "Add Expenditure" button)
     if (initialData && initialData.action === 'prefill') {
         setMode('manual');
         setManualForm(prev => ({
@@ -46,15 +45,9 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     }
   }, [initialData]);
 
-  // Derived Lists for Auto-Complete (History)
   const uniqueVendors = Array.from(new Set(expenditures.map(e => e.vendor))).sort();
-  
-  // FIX: Added strict type predicate (p is string) to satisfy TypeScript
-  const uniquePurchasers = Array.from(new Set(
-    expenditures.map(e => e.purchaser).filter((p): p is string => !!p)
-  )).sort();
+  const uniquePurchasers = Array.from(new Set(expenditures.map(e => e.purchaser).filter((p): p is string => !!p))).sort();
 
-  // Cascading Filter Logic
   const selectedGrant = grants.find(g => g.id === manualForm.grantId);
   const availableDeliverables = selectedGrant?.deliverables || [];
   const selectedDeliverable = availableDeliverables.find(d => d.id === manualForm.deliverableId);
@@ -105,7 +98,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
       categoryId: data.categoryId,
       date: data.date,
       vendor: data.vendor,
-      amount: parseFloat(data.amount),
+      amount: typeof data.amount === 'string' ? parseFloat(data.amount) || 0 : data.amount,
       purchaser: data.purchaser || '',
       justification: data.justification || '',
       notes: data.notes || '',
@@ -114,7 +107,6 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     };
 
     db.addExpenditure(newTx);
-    // Refresh history
     setExpenditures(db.getExpenditures());
     return true;
   };
@@ -122,7 +114,6 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
   const handleManualSubmit = async () => {
     if (await saveExpenditure(manualForm)) {
         alert("Expenditure Saved!");
-        // Reset Form
         setManualForm({ 
             date: new Date().toISOString().split('T')[0], 
             amount: 0, 
@@ -137,9 +128,15 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     }
   };
 
+  // Helper for input change to prevent NaN
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>, setter: Function, currentData: any) => {
+    const val = e.target.value;
+    // Allow empty string to let user delete '0'
+    setter({...currentData, amount: val === '' ? '' : parseFloat(val)});
+  };
+
   return (
     <div className="space-y-6">
-      {/* Hidden Datalists for Auto-Complete */}
       <datalist id="vendors">
         {uniqueVendors.map((v, i) => <option key={i} value={v} />)}
       </datalist>
@@ -158,20 +155,20 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
       {mode === 'manual' ? (
         <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-sm border border-slate-200 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <HighContrastSelect label="Grant" options={grants.map(g => ({ value: g.id, label: g.name }))} value={manualForm.grantId} onChange={e => setManualForm({...manualForm, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
-                <HighContrastSelect label="Deliverable" options={availableDeliverables.map(d => ({ value: d.id, label: d.description }))} value={manualForm.deliverableId} onChange={e => setManualForm({...manualForm, deliverableId: e.target.value, categoryId: ''})} />
-                <HighContrastSelect label="Category" options={availableCategories.map(c => ({ value: c.id, label: c.name }))} value={manualForm.categoryId} onChange={e => setManualForm({...manualForm, categoryId: e.target.value})} />
+                <HighContrastSelect label="Grant" options={grants.map(g => ({ value: g.id, label: g.name }))} value={manualForm.grantId || ''} onChange={e => setManualForm({...manualForm, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
+                <HighContrastSelect label="Deliverable" options={availableDeliverables.map(d => ({ value: d.id, label: d.description }))} value={manualForm.deliverableId || ''} onChange={e => setManualForm({...manualForm, deliverableId: e.target.value, categoryId: ''})} />
+                <HighContrastSelect label="Category" options={availableCategories.map(c => ({ value: c.id, label: c.name }))} value={manualForm.categoryId || ''} onChange={e => setManualForm({...manualForm, categoryId: e.target.value})} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-                <HighContrastInput label="Date" type="date" value={manualForm.date} onChange={e => setManualForm({...manualForm, date: e.target.value})} />
-                <HighContrastInput label="Amount" type="number" value={manualForm.amount} onChange={e => setManualForm({...manualForm, amount: parseFloat(e.target.value)})} />
+                <HighContrastInput label="Date" type="date" value={manualForm.date || ''} onChange={e => setManualForm({...manualForm, date: e.target.value})} />
+                <HighContrastInput label="Amount" type="number" value={manualForm.amount ?? ''} onChange={e => handleAmountChange(e, setManualForm, manualForm)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-                <HighContrastInput label="Vendor" list="vendors" value={manualForm.vendor} onChange={e => setManualForm({...manualForm, vendor: e.target.value})} />
-                <HighContrastInput label="Purchaser" list="purchasers" value={manualForm.purchaser} onChange={e => setManualForm({...manualForm, purchaser: e.target.value})} />
+                <HighContrastInput label="Vendor" list="vendors" value={manualForm.vendor || ''} onChange={e => setManualForm({...manualForm, vendor: e.target.value})} />
+                <HighContrastInput label="Purchaser" list="purchasers" value={manualForm.purchaser || ''} onChange={e => setManualForm({...manualForm, purchaser: e.target.value})} />
             </div>
-            <HighContrastTextArea label="Justification" rows={2} value={manualForm.justification} onChange={e => setManualForm({...manualForm, justification: e.target.value})} />
-            <HighContrastTextArea label="Notes" rows={2} value={manualForm.notes} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
+            <HighContrastTextArea label="Justification" rows={2} value={manualForm.justification || ''} onChange={e => setManualForm({...manualForm, justification: e.target.value})} />
+            <HighContrastTextArea label="Notes" rows={2} value={manualForm.notes || ''} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
             <button onClick={handleManualSubmit} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 rounded-lg flex justify-center items-center"><Save size={20} className="mr-2"/> Save Expenditure</button>
         </div>
       ) : (
@@ -203,7 +200,6 @@ interface ReviewCardProps {
 const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove, vendors, purchasers }) => {
   const [data, setData] = useState<Partial<Expenditure>>(item.parsedData || { amount: 0, date: '', vendor: '' });
   
-  // Cascading Logic for Review Card
   const selectedGrant = grants.find((g:Grant) => g.id === data.grantId);
   const availableDeliverables = selectedGrant?.deliverables || [];
   const selectedDeliverable = availableDeliverables.find((d:Deliverable) => d.id === data.deliverableId);
@@ -217,18 +213,21 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove,
     <div className="bg-white p-4 rounded-xl shadow-md border border-slate-200 space-y-3">
       <img src={item.rawImage} className="h-32 w-full object-contain bg-slate-100 rounded" />
       <div className="space-y-2">
-        <HighContrastSelect label="Grant" options={grants.map((g:Grant) => ({ value: g.id, label: g.name }))} value={data.grantId} onChange={(e:any) => setData({...data, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
-        {data.grantId && <HighContrastSelect label="Deliverable" options={availableDeliverables.map((d:Deliverable) => ({ value: d.id, label: d.description }))} value={data.deliverableId} onChange={(e:any) => setData({...data, deliverableId: e.target.value, categoryId: ''})} />}
-        {data.deliverableId && <HighContrastSelect label="Category" options={availableCategories.map((c:BudgetCategory) => ({ value: c.id, label: c.name }))} value={data.categoryId} onChange={(e:any) => setData({...data, categoryId: e.target.value})} />}
+        <HighContrastSelect label="Grant" options={grants.map((g:Grant) => ({ value: g.id, label: g.name }))} value={data.grantId || ''} onChange={(e:any) => setData({...data, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
+        {data.grantId && <HighContrastSelect label="Deliverable" options={availableDeliverables.map((d:Deliverable) => ({ value: d.id, label: d.description }))} value={data.deliverableId || ''} onChange={(e:any) => setData({...data, deliverableId: e.target.value, categoryId: ''})} />}
+        {data.deliverableId && <HighContrastSelect label="Category" options={availableCategories.map((c:BudgetCategory) => ({ value: c.id, label: c.name }))} value={data.categoryId || ''} onChange={(e:any) => setData({...data, categoryId: e.target.value})} />}
         
-        <HighContrastInput label="Vendor" list="vendors" value={data.vendor} onChange={e => setData({...data, vendor: e.target.value})} />
+        <HighContrastInput label="Vendor" list="vendors" value={data.vendor || ''} onChange={e => setData({...data, vendor: e.target.value})} />
         <div className="grid grid-cols-2 gap-2">
-            <HighContrastInput label="Date" type="date" value={data.date} onChange={e => setData({...data, date: e.target.value})} />
-            <HighContrastInput label="Amount" type="number" value={data.amount} onChange={e => setData({...data, amount: parseFloat(e.target.value) || 0})} />
+            <HighContrastInput label="Date" type="date" value={data.date || ''} onChange={e => setData({...data, date: e.target.value})} />
+            <HighContrastInput label="Amount" type="number" value={data.amount ?? ''} onChange={e => {
+                const val = e.target.value;
+                setData({...data, amount: val === '' ? undefined : parseFloat(val)});
+            }} />
         </div>
-        <HighContrastInput label="Purchaser" list="purchasers" value={data.purchaser} onChange={e => setData({...data, purchaser: e.target.value})} />
-        <HighContrastTextArea label="Justification" rows={2} value={data.justification} onChange={e => setData({...data, justification: e.target.value})} />
-        <HighContrastTextArea label="Notes" rows={2} value={data.notes} onChange={e => setData({...data, notes: e.target.value})} />
+        <HighContrastInput label="Purchaser" list="purchasers" value={data.purchaser || ''} onChange={e => setData({...data, purchaser: e.target.value})} />
+        <HighContrastTextArea label="Justification" rows={2} value={data.justification || ''} onChange={e => setData({...data, justification: e.target.value})} />
+        <HighContrastTextArea label="Notes" rows={2} value={data.notes || ''} onChange={e => setData({...data, notes: e.target.value})} />
       </div>
       <div className="flex gap-2 pt-2">
         <button onClick={() => onRemove(item.id)} className="flex-1 py-2 text-red-600 bg-red-50 rounded hover:bg-red-100"><Trash2 className="mx-auto" size={18} /></button>
