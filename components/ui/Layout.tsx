@@ -1,5 +1,6 @@
 import React from 'react';
 import { LayoutDashboard, FileText, PieChart, Mail, Wand2, UploadCloud, MessageSquareWarning } from 'lucide-react';
+import { Settings as SettingsIcon } from 'lucide-react';
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -77,6 +78,21 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           />
           
           <div className="pt-4 mt-4 border-t border-slate-800">
+            <SidebarItem 
+              icon={MessageSquareWarning} 
+              label="Beta Feedback" 
+              active={activeTab === 'feedback'} 
+              onClick={() => setActiveTab('feedback')} 
+            />
+          </div>
+
+          <div className="pt-4 mt-4 border-t border-slate-800 space-y-2">
+            <SidebarItem 
+              icon={SettingsIcon} 
+              label="Settings & Data" 
+              active={activeTab === 'settings'} 
+              onClick={() => setActiveTab('settings')} 
+            />
             <SidebarItem 
               icon={MessageSquareWarning} 
               label="Beta Feedback" 
