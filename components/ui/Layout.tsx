@@ -54,7 +54,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           />
           <SidebarItem 
             icon={UploadCloud} 
-            label="Ingestion Queue" 
+            label="Expense Input" 
             active={activeTab === 'ingestion'} 
             onClick={() => setActiveTab('ingestion')} 
           />
@@ -66,7 +66,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           />
            <SidebarItem 
             icon={Wand2} 
-            label="Wizard (AI)" 
+            label="AI Proposal Wizard" 
             active={activeTab === 'wizard'} 
             onClick={() => setActiveTab('wizard')} 
           />

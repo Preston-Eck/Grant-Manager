@@ -11,23 +11,28 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
           {
             inlineData: {
-              mimeType: 'image/jpeg', // Assuming jpeg for simplicity, realistically detect type
+              mimeType: 'image/jpeg', 
               data: base64Data
             }
           },
           {
-            text: `Analyze this receipt. Return ONLY a JSON object with the following keys: "vendor" (string), "date" (YYYY-MM-DD string), "amount" (number), "category" (string, guess based on vendor e.g., Supplies, Travel, Meals). Do not include markdown formatting or backticks.`
+            text: `Extract data from this receipt. Return ONLY a JSON object (no markdown) with these keys: 
+            - "vendor" (string)
+            - "date" (YYYY-MM-DD string)
+            - "amount" (number)
+            - "category" (string, guess based on vendor e.g., Supplies, Travel, Meals).`
           }
         ]
       }
     });
 
-    return response.text;
+    // FIX: Fallback to empty string if text is undefined
+    return response.text || "{}"; 
   } catch (error) {
     console.error("Gemini Vision Error:", error);
     throw error;
@@ -44,7 +49,7 @@ export const generateGrantSection = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-1.5-flash',
       contents: `You are a professional grant writer. Write the "${topic}" section for a grant proposal.
       
       Grant Name: ${grantName}
@@ -54,7 +59,8 @@ export const generateGrantSection = async (
       Keep it professional, persuasive, and concise. formatting: clean paragraphs.`
     });
 
-    return response.text;
+    // FIX: Fallback to empty string
+    return response.text || "";
   } catch (error) {
     console.error("Gemini Text Gen Error:", error);
     throw error;
@@ -69,7 +75,7 @@ export const generateEmailTemplate = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-1.5-flash',
       contents: `You are an expert grant manager. Create an email template.
       Topic: ${topic}
       Context/Tone: ${context}
@@ -81,7 +87,7 @@ export const generateEmailTemplate = async (
       }
     });
     
-    // The response text is guaranteed to be JSON due to responseMimeType
+    // FIX: Fallback to empty JSON object string if undefined
     return JSON.parse(response.text || '{}');
   } catch (error) {
     console.error("Gemini Template Gen Error:", error);

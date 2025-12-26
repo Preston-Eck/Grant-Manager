@@ -25,8 +25,11 @@ export interface Transaction {
   category: string;
   amount: number;
   description?: string;
-  receiptUrl?: string; // In a real app this is a path, here maybe base64 or blob url
+  receiptUrl?: string; 
   status: 'Pending' | 'Approved' | 'Rejected';
+  // New Fields
+  purchaser?: string;
+  notes?: string;
 }
 
 export interface EmailTemplate {
@@ -44,7 +47,7 @@ export enum ReportType {
 
 export interface IngestionItem {
   id: string;
-  rawImage: string; // Base64
+  rawImage: string; // Base64 for preview
   parsedData: Partial<Transaction> | null;
   status: 'Scanning' | 'Review' | 'Approved';
 }
