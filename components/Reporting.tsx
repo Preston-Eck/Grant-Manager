@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, Transaction } from '../types';
 import { HighContrastSelect, HighContrastInput } from './ui/Input';
-import { Download, FileText, Table, Edit2, Save, X } from 'lucide-react';
+import { Download, FileText, Edit2, Save, X } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -58,8 +58,8 @@ export const Reporting: React.FC = () => {
   const saveEdit = () => {
     if (!editForm.id) return;
     
-    // In a real DB, we would have an update method. Here we manually update the list.
-    const allTransactions = db.getTransactions(); // Get ALL, not just filtered
+    // Manual DB Update
+    const allTransactions = db.getTransactions(); 
     const index = allTransactions.findIndex(t => t.id === editForm.id);
     
     if (index !== -1) {
@@ -69,7 +69,6 @@ export const Reporting: React.FC = () => {
        // Update Grant totals
        const currentGrant = grants.find(g => g.id === editForm.grantId);
        if(currentGrant) {
-         // Re-calculate spent for this grant
          const grantTx = allTransactions.filter(t => t.grantId === currentGrant.id);
          currentGrant.spent = grantTx.reduce((sum, t) => sum + t.amount, 0);
          db.saveGrant(currentGrant);
@@ -82,11 +81,14 @@ export const Reporting: React.FC = () => {
 
   const downloadCSV = () => {
     if (!transactions.length) return;
-    const headers = ['Date', 'Vendor', 'Category', 'Amount', 'Status', 'ID'];
+    // UPDATED: Added Purchaser and Notes to CSV
+    const headers = ['Date', 'Vendor', 'Category', 'Purchaser', 'Notes', 'Amount', 'Status', 'ID'];
     const rows = transactions.map(t => [
       t.date,
-      `"${t.vendor}"`, 
+      `"${t.vendor.replace(/"/g, '""')}"`, 
       t.category,
+      `"${(t.purchaser || '').replace(/"/g, '""')}"`,
+      `"${(t.notes || '').replace(/"/g, '""')}"`,
       t.amount.toFixed(2),
       t.status,
       t.id
@@ -183,16 +185,19 @@ export const Reporting: React.FC = () => {
               )}
             </div>
 
-            <div>
+            <div className="overflow-x-auto">
               <h4 className="text-lg font-bold text-slate-800 mb-4">Transaction Ledger</h4>
-              <table className="w-full text-sm text-left border-collapse">
+              <table className="w-full text-sm text-left border-collapse min-w-[800px]">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-300">
-                    <th className="p-3">Date</th>
+                    <th className="p-3 w-28">Date</th>
                     <th className="p-3">Vendor</th>
                     <th className="p-3">Category</th>
+                    {/* NEW COLUMNS */}
+                    <th className="p-3">Purchaser</th>
+                    <th className="p-3 w-48">Notes</th>
                     <th className="p-3 text-right">Amount</th>
-                    <th className="p-3 print:hidden">Actions</th>
+                    <th className="p-3 print:hidden w-20">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -203,10 +208,14 @@ export const Reporting: React.FC = () => {
                           <td className="p-2"><HighContrastInput type="date" value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} /></td>
                           <td className="p-2"><HighContrastInput value={editForm.vendor} onChange={e => setEditForm({...editForm, vendor: e.target.value})} /></td>
                           <td className="p-2"><HighContrastInput value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value})} /></td>
+                          {/* NEW EDIT FIELDS */}
+                          <td className="p-2"><HighContrastInput value={editForm.purchaser || ''} onChange={e => setEditForm({...editForm, purchaser: e.target.value})} /></td>
+                          <td className="p-2"><HighContrastInput value={editForm.notes || ''} onChange={e => setEditForm({...editForm, notes: e.target.value})} /></td>
+                          
                           <td className="p-2"><HighContrastInput type="number" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})} /></td>
                           <td className="p-2 flex space-x-2">
-                             <button onClick={saveEdit} className="text-green-600"><Save size={18} /></button>
-                             <button onClick={cancelEdit} className="text-red-600"><X size={18} /></button>
+                             <button onClick={saveEdit} className="text-green-600 hover:text-green-800"><Save size={18} /></button>
+                             <button onClick={cancelEdit} className="text-red-600 hover:text-red-800"><X size={18} /></button>
                           </td>
                         </>
                       ) : (
@@ -214,6 +223,10 @@ export const Reporting: React.FC = () => {
                           <td className="p-3">{t.date}</td>
                           <td className="p-3 font-semibold">{t.vendor}</td>
                           <td className="p-3">{t.category}</td>
+                          {/* NEW DATA CELLS */}
+                          <td className="p-3">{t.purchaser || '-'}</td>
+                          <td className="p-3 text-slate-500 truncate max-w-xs" title={t.notes}>{t.notes || '-'}</td>
+                          
                           <td className="p-3 text-right font-mono">${t.amount.toFixed(2)}</td>
                           <td className="p-3 print:hidden">
                             <button onClick={() => startEdit(t)} className="text-slate-400 hover:text-brand-600"><Edit2 size={16} /></button>

@@ -7,17 +7,14 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
   if (!apiKey) throw new Error("API Key missing");
 
   // 1. Dynamic Mime Type Detection
-  // Check if the string starts with a data URI scheme
   let mimeType = 'image/jpeg'; // Default
   if (base64Image.startsWith('data:image/png;')) {
     mimeType = 'image/png';
-  } else if (base64Image.startsWith('data:image/jpeg;') || base64Image.startsWith('data:image/jpg;')) {
-    mimeType = 'image/jpeg';
   } else if (base64Image.startsWith('data:image/webp;')) {
     mimeType = 'image/webp';
   }
 
-  // 2. Strip the header for the API payload
+  // 2. Strip prefix for the API payload
   const base64Data = base64Image.split(',')[1] || base64Image;
 
   try {
@@ -42,7 +39,9 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
       }
     });
 
-    return response.text || "{}"; 
+    // 3. Fallback and Clean
+    const text = response.text || "{}";
+    return text.replace(/```json/g, '').replace(/```/g, '').trim(); 
   } catch (error) {
     console.error("Gemini Vision Error:", error);
     throw error;
@@ -69,11 +68,10 @@ export const generateGrantSection = async (
       Keep it professional, persuasive, and concise. formatting: clean paragraphs.`
     });
 
-    // FIX: Fallback to empty string
     return response.text || "";
   } catch (error) {
     console.error("Gemini Text Gen Error:", error);
-    throw error;
+    return "Error generating text.";
   }
 };
 
@@ -97,10 +95,9 @@ export const generateEmailTemplate = async (
       }
     });
     
-    // FIX: Fallback to empty JSON object string if undefined
     return JSON.parse(response.text || '{}');
   } catch (error) {
     console.error("Gemini Template Gen Error:", error);
-    throw error;
+    return { subject: "Error", body: "Could not generate template." };
   }
 };
