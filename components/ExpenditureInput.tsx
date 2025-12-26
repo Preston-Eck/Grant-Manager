@@ -7,9 +7,10 @@ import { Loader2, Upload, Scan, FileInput, Save, Trash2, Check } from 'lucide-re
 
 interface ExpenditureInputProps {
   onNavigate?: (tab: string, data?: any) => void;
+  initialData?: any; // NEW PROP
 }
 
-export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate }) => {
+export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, initialData }) => {
   const [queue, setQueue] = useState<IngestionItem[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
   const [loading, setLoading] = useState(false);
@@ -28,7 +29,19 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate }
     categoryId: ''
   });
 
-  useEffect(() => { setGrants(db.getGrants()); }, []);
+  useEffect(() => { 
+    setGrants(db.getGrants()); 
+    // Handle Pre-fill
+    if (initialData && initialData.action === 'prefill') {
+        setMode('manual');
+        setManualForm(prev => ({
+            ...prev,
+            grantId: initialData.grantId,
+            deliverableId: initialData.deliverableId,
+            categoryId: initialData.categoryId
+        }));
+    }
+  }, [initialData]);
 
   // Filter logic for manual form
   const selectedGrant = grants.find(g => g.id === manualForm.grantId);
@@ -45,7 +58,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate }
         setQueue(prev => [...prev, newItem]);
         await processScan(newItem);
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(e.target.files[0]);
     }
   };
 
@@ -95,7 +108,14 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate }
   const handleManualSubmit = async () => {
     if (await saveExpenditure(manualForm)) {
         alert("Expenditure Saved!");
-        setManualForm({ date: new Date().toISOString().split('T')[0], amount: 0, vendor: '', justification: '', grantId: '' });
+        // Reset form but keep context if bulk adding
+        setManualForm(prev => ({ 
+            ...prev, 
+            date: new Date().toISOString().split('T')[0], 
+            amount: 0, 
+            vendor: '', 
+            justification: '' 
+        }));
     }
   };
 
@@ -135,13 +155,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate }
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {queue.map(item => (
-              <ReviewCard 
-                key={item.id} 
-                item={item} 
-                grants={grants} 
-                onSave={saveExpenditure} 
-                onRemove={(id: string) => setQueue(q => q.filter(i => i.id !== id))} 
-              />
+              <ReviewCard key={item.id} item={item} grants={grants} onSave={saveExpenditure} onRemove={(id: string) => setQueue(q => q.filter(i => i.id !== id))} />
             ))}
           </div>
         </div>
@@ -160,7 +174,6 @@ interface ReviewCardProps {
 const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove }) => {
   const [data, setData] = useState<Partial<Expenditure>>(item.parsedData || { amount: 0, date: '', vendor: '' });
   
-  // Cascading Logic for Review Card
   const selectedGrant = grants.find((g:Grant) => g.id === data.grantId);
   const availableDeliverables = selectedGrant?.deliverables || [];
   const selectedDeliverable = availableDeliverables.find((d:Deliverable) => d.id === data.deliverableId);
@@ -173,7 +186,6 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove 
   return (
     <div className="bg-white p-4 rounded-xl shadow-md border border-slate-200 space-y-3">
       <img src={item.rawImage} className="h-32 w-full object-contain bg-slate-100 rounded" />
-      
       <div className="space-y-2">
         <HighContrastSelect label="Grant" options={grants.map((g:Grant) => ({ value: g.id, label: g.name }))} value={data.grantId} onChange={(e:any) => setData({...data, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
         {data.grantId && <HighContrastSelect label="Deliverable" options={availableDeliverables.map((d:Deliverable) => ({ value: d.id, label: d.description }))} value={data.deliverableId} onChange={(e:any) => setData({...data, deliverableId: e.target.value, categoryId: ''})} />}
@@ -182,12 +194,7 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove 
         <HighContrastInput label="Vendor" value={data.vendor} onChange={e => setData({...data, vendor: e.target.value})} />
         <div className="grid grid-cols-2 gap-2">
             <HighContrastInput label="Date" type="date" value={data.date} onChange={e => setData({...data, date: e.target.value})} />
-            <HighContrastInput 
-              label="Amount" 
-              type="number" 
-              value={data.amount} 
-              onChange={e => setData({...data, amount: parseFloat(e.target.value) || 0})} // Fixed Type Error
-            />
+            <HighContrastInput label="Amount" type="number" value={data.amount} onChange={e => setData({...data, amount: parseFloat(e.target.value) || 0})} />
         </div>
         <HighContrastInput label="Purchaser" value={data.purchaser} onChange={e => setData({...data, purchaser: e.target.value})} />
         <HighContrastTextArea label="Justification" rows={2} value={data.justification} onChange={e => setData({...data, justification: e.target.value})} />

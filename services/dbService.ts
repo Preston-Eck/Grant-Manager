@@ -12,6 +12,8 @@ const INITIAL_GRANTS: Grant[] = [
     endDate: '2023-12-31',
     status: GrantStatus.Active,
     reports: [],
+    // FIX: Added required attachments array
+    attachments: [],
     deliverables: [
       {
         id: 'd-1',

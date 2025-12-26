@@ -7,24 +7,24 @@ export enum GrantStatus {
 
 export interface BudgetCategory {
   id: string;
-  name: string; // e.g., "Personnel", "Travel"
+  name: string; 
   allocation: number;
   purpose: string;
 }
 
 export interface Deliverable {
   id: string;
-  sectionReference: string; // e.g., "Section 4.1.a"
+  sectionReference: string;
   description: string;
   allocatedValue: number;
   dueDate: string;
-  status: 'Pending' | 'In Progress' | 'Completed' | 'Delayed';
+  status: 'Pending' | 'In Progress' | 'Completed' | 'Delayed'; // Status column
   budgetCategories: BudgetCategory[];
 }
 
 export interface ComplianceReport {
   id: string;
-  title: string; // e.g., "Q1 Performance Report"
+  title: string;
   dueDate: string;
   submittedDate?: string;
   type: 'Financial' | 'Programmatic' | 'Audit' | 'Other';
@@ -37,24 +37,25 @@ export interface Grant {
   id: string;
   name: string;
   funder: string;
-  purpose: string; // NEW
-  totalAward: number; // Renamed from budget for clarity
+  purpose: string;
+  totalAward: number;
   startDate: string;
   endDate: string;
   status: GrantStatus;
-  deliverables: Deliverable[]; // NEW
-  reports: ComplianceReport[]; // NEW
+  deliverables: Deliverable[];
+  reports: ComplianceReport[];
+  attachments: string[]; // NEW: Grant-level attachments
 }
 
-export interface Expenditure { // Renamed from Transaction
+export interface Expenditure {
   id: string;
   grantId: string;
-  deliverableId: string; // NEW
-  categoryId: string; // NEW
+  deliverableId: string;
+  categoryId: string;
   date: string;
   vendor: string;
   amount: number;
-  justification: string; // NEW (Long text)
+  justification: string;
   receiptUrl?: string; 
   status: 'Pending' | 'Approved' | 'Rejected';
   purchaser?: string;
