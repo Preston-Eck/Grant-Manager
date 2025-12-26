@@ -185,7 +185,26 @@ export const Reporting: React.FC = () => {
                            <td className="p-2"><HighContrastTextArea rows={2} value={editForm.justification} onChange={e => setEditForm({...editForm, justification: e.target.value})} /></td>
                            <td className="p-2 text-xs text-slate-400">Locked for Audit</td>
                            <td className="p-2"><HighContrastInput type="number" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})} /></td>
-                           <td className="p-2 text-center">-</td>
+                           <td className="p-2 text-center">
+                              <label className="cursor-pointer text-xs bg-slate-100 px-2 py-1 rounded hover:bg-slate-200">
+                                  Upload
+                                  <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
+                                      if(e.target.files?.[0]) {
+                                          const file = e.target.files[0];
+                                          const reader = new FileReader();
+                                          reader.onload = async () => {
+                                              const base64 = reader.result as string;
+                                              // Save and update form
+                                              if ((window as any).electronAPI) {
+                                                  const path = await (window as any).electronAPI.saveReceipt(base64, `receipt_${Date.now()}.png`);
+                                                  setEditForm(prev => ({ ...prev, receiptUrl: path }));
+                                              }
+                                          };
+                                          reader.readAsDataURL(file);
+                                      }
+                                  }}/>
+                              </label>
+                          </td>
                            <td className="p-2 flex justify-center space-x-1">
                               <button onClick={saveEdit} className="p-1 text-green-600 hover:bg-green-50 rounded"><Save size={16}/></button>
                               <button onClick={() => setEditingId(null)} className="p-1 text-red-600 hover:bg-red-50 rounded"><X size={16}/></button>

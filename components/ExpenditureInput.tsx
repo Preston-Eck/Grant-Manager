@@ -7,16 +7,17 @@ import { Loader2, Upload, Scan, FileInput, Save, Trash2, Check } from 'lucide-re
 
 interface ExpenditureInputProps {
   onNavigate?: (tab: string, data?: any) => void;
-  initialData?: any; // NEW PROP
+  initialData?: any;
 }
 
 export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, initialData }) => {
   const [queue, setQueue] = useState<IngestionItem[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<'scan' | 'manual'>('scan');
 
-  // Manual Form
+  // Manual Form State
   const [manualForm, setManualForm] = useState<Partial<Expenditure>>({
     date: new Date().toISOString().split('T')[0],
     amount: 0,
@@ -31,7 +32,9 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
 
   useEffect(() => { 
     setGrants(db.getGrants()); 
-    // Handle Pre-fill
+    setExpenditures(db.getExpenditures());
+
+    // Handle Pre-fill from other tabs (Grant Manager "Add Expenditure" button)
     if (initialData && initialData.action === 'prefill') {
         setMode('manual');
         setManualForm(prev => ({
@@ -43,7 +46,15 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     }
   }, [initialData]);
 
-  // Filter logic for manual form
+  // Derived Lists for Auto-Complete (History)
+  const uniqueVendors = Array.from(new Set(expenditures.map(e => e.vendor))).sort();
+  
+  // FIX: Added strict type predicate (p is string) to satisfy TypeScript
+  const uniquePurchasers = Array.from(new Set(
+    expenditures.map(e => e.purchaser).filter((p): p is string => !!p)
+  )).sort();
+
+  // Cascading Filter Logic
   const selectedGrant = grants.find(g => g.id === manualForm.grantId);
   const availableDeliverables = selectedGrant?.deliverables || [];
   const selectedDeliverable = availableDeliverables.find(d => d.id === manualForm.deliverableId);
@@ -58,7 +69,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
         setQueue(prev => [...prev, newItem]);
         await processScan(newItem);
       };
-      reader.readAsDataURL(e.target.files[0]);
+      reader.readAsDataURL(file);
     }
   };
 
@@ -95,32 +106,47 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
       date: data.date,
       vendor: data.vendor,
       amount: parseFloat(data.amount),
-      purchaser: data.purchaser,
-      justification: data.justification,
+      purchaser: data.purchaser || '',
+      justification: data.justification || '',
+      notes: data.notes || '',
       receiptUrl: savedPath || receiptBase64,
       status: 'Approved'
     };
 
     db.addExpenditure(newTx);
+    // Refresh history
+    setExpenditures(db.getExpenditures());
     return true;
   };
 
   const handleManualSubmit = async () => {
     if (await saveExpenditure(manualForm)) {
         alert("Expenditure Saved!");
-        // Reset form but keep context if bulk adding
-        setManualForm(prev => ({ 
-            ...prev, 
+        // Reset Form
+        setManualForm({ 
             date: new Date().toISOString().split('T')[0], 
             amount: 0, 
             vendor: '', 
-            justification: '' 
-        }));
+            purchaser: '', 
+            justification: '', 
+            notes: '', 
+            grantId: '', 
+            deliverableId: '', 
+            categoryId: '' 
+        });
     }
   };
 
   return (
     <div className="space-y-6">
+      {/* Hidden Datalists for Auto-Complete */}
+      <datalist id="vendors">
+        {uniqueVendors.map((v, i) => <option key={i} value={v} />)}
+      </datalist>
+      <datalist id="purchasers">
+        {uniquePurchasers.map((p, i) => <option key={i} value={p} />)}
+      </datalist>
+
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-2xl font-bold text-slate-900">Expenditure Input</h2>
         <div className="flex bg-slate-100 p-1 rounded-lg">
@@ -141,10 +167,11 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
                 <HighContrastInput label="Amount" type="number" value={manualForm.amount} onChange={e => setManualForm({...manualForm, amount: parseFloat(e.target.value)})} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-                <HighContrastInput label="Vendor" value={manualForm.vendor} onChange={e => setManualForm({...manualForm, vendor: e.target.value})} />
-                <HighContrastInput label="Purchaser" value={manualForm.purchaser} onChange={e => setManualForm({...manualForm, purchaser: e.target.value})} />
+                <HighContrastInput label="Vendor" list="vendors" value={manualForm.vendor} onChange={e => setManualForm({...manualForm, vendor: e.target.value})} />
+                <HighContrastInput label="Purchaser" list="purchasers" value={manualForm.purchaser} onChange={e => setManualForm({...manualForm, purchaser: e.target.value})} />
             </div>
-            <HighContrastTextArea label="Justification" rows={3} value={manualForm.justification} onChange={e => setManualForm({...manualForm, justification: e.target.value})} />
+            <HighContrastTextArea label="Justification" rows={2} value={manualForm.justification} onChange={e => setManualForm({...manualForm, justification: e.target.value})} />
+            <HighContrastTextArea label="Notes" rows={2} value={manualForm.notes} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
             <button onClick={handleManualSubmit} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 rounded-lg flex justify-center items-center"><Save size={20} className="mr-2"/> Save Expenditure</button>
         </div>
       ) : (
@@ -155,7 +182,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {queue.map(item => (
-              <ReviewCard key={item.id} item={item} grants={grants} onSave={saveExpenditure} onRemove={(id: string) => setQueue(q => q.filter(i => i.id !== id))} />
+              <ReviewCard key={item.id} item={item} grants={grants} onSave={saveExpenditure} onRemove={(id: string) => setQueue(q => q.filter(i => i.id !== id))} vendors={uniqueVendors} purchasers={uniquePurchasers} />
             ))}
           </div>
         </div>
@@ -169,11 +196,14 @@ interface ReviewCardProps {
   grants: Grant[];
   onSave: (data: any, receiptBase64?: string) => Promise<boolean>;
   onRemove: (id: string) => void;
+  vendors: string[];
+  purchasers: string[];
 }
 
-const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove }) => {
+const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove, vendors, purchasers }) => {
   const [data, setData] = useState<Partial<Expenditure>>(item.parsedData || { amount: 0, date: '', vendor: '' });
   
+  // Cascading Logic for Review Card
   const selectedGrant = grants.find((g:Grant) => g.id === data.grantId);
   const availableDeliverables = selectedGrant?.deliverables || [];
   const selectedDeliverable = availableDeliverables.find((d:Deliverable) => d.id === data.deliverableId);
@@ -191,15 +221,15 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove 
         {data.grantId && <HighContrastSelect label="Deliverable" options={availableDeliverables.map((d:Deliverable) => ({ value: d.id, label: d.description }))} value={data.deliverableId} onChange={(e:any) => setData({...data, deliverableId: e.target.value, categoryId: ''})} />}
         {data.deliverableId && <HighContrastSelect label="Category" options={availableCategories.map((c:BudgetCategory) => ({ value: c.id, label: c.name }))} value={data.categoryId} onChange={(e:any) => setData({...data, categoryId: e.target.value})} />}
         
-        <HighContrastInput label="Vendor" value={data.vendor} onChange={e => setData({...data, vendor: e.target.value})} />
+        <HighContrastInput label="Vendor" list="vendors" value={data.vendor} onChange={e => setData({...data, vendor: e.target.value})} />
         <div className="grid grid-cols-2 gap-2">
             <HighContrastInput label="Date" type="date" value={data.date} onChange={e => setData({...data, date: e.target.value})} />
             <HighContrastInput label="Amount" type="number" value={data.amount} onChange={e => setData({...data, amount: parseFloat(e.target.value) || 0})} />
         </div>
-        <HighContrastInput label="Purchaser" value={data.purchaser} onChange={e => setData({...data, purchaser: e.target.value})} />
+        <HighContrastInput label="Purchaser" list="purchasers" value={data.purchaser} onChange={e => setData({...data, purchaser: e.target.value})} />
         <HighContrastTextArea label="Justification" rows={2} value={data.justification} onChange={e => setData({...data, justification: e.target.value})} />
+        <HighContrastTextArea label="Notes" rows={2} value={data.notes} onChange={e => setData({...data, notes: e.target.value})} />
       </div>
-
       <div className="flex gap-2 pt-2">
         <button onClick={() => onRemove(item.id)} className="flex-1 py-2 text-red-600 bg-red-50 rounded hover:bg-red-100"><Trash2 className="mx-auto" size={18} /></button>
         <button onClick={() => { onSave(data, item.rawImage).then((res:boolean) => { if(res) onRemove(item.id) }) }} className="flex-1 py-2 text-white bg-brand-600 rounded hover:bg-brand-700"><Check className="mx-auto" size={18} /></button>

@@ -6,7 +6,7 @@ const ai = new GoogleGenAI({ apiKey });
 export const parseReceiptImage = async (base64Image: string): Promise<string> => {
   if (!apiKey) throw new Error("API Key missing");
 
-  // Dynamic Mime Type Detection
+  // 1. Dynamic Mime Type Detection
   let mimeType = 'image/jpeg';
   if (base64Image.startsWith('data:image/png;')) {
     mimeType = 'image/png';
@@ -17,12 +17,13 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
   const base64Data = base64Image.split(',')[1] || base64Image;
 
   try {
+    // FIX: Changed model to 'gemini-1.5-flash-001' to fix 404 errors
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-001', 
       contents: {
         parts: [
           { inlineData: { mimeType: mimeType, data: base64Data } },
-          { text: `Extract receipt data. Return ONLY a valid JSON object. Keys: "vendor" (string), "date" (YYYY-MM-DD), "amount" (number). No markdown.` }
+          { text: `Extract data. Return ONLY valid JSON. Keys: "vendor" (string), "date" (YYYY-MM-DD), "amount" (number). No markdown.` }
         ]
       }
     });
@@ -39,7 +40,7 @@ export const generateGrantSection = async (topic: string, grantName: string, fun
   if (!apiKey) throw new Error("API Key missing");
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-001',
       contents: `Write "${topic}" for grant: ${grantName} (Funder: ${funder}). Details: ${keyDetails}`
     });
     return response.text || "";
@@ -50,7 +51,7 @@ export const generateEmailTemplate = async (topic: string, context: string): Pro
   if (!apiKey) throw new Error("API Key missing");
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-001',
       contents: `Email template for "${topic}", context "${context}". Return JSON {subject, body}`,
       config: { responseMimeType: 'application/json' }
     });
