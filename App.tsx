@@ -7,7 +7,7 @@ import { Reporting } from './components/Reporting';
 import { Communication } from './components/Communication';
 import { Feedback } from './components/Feedback';
 import { DataManagement } from './components/DataManagement';
-import { GrantManager } from './components/GrantManager'; // <--- ADD THIS LINE
+import { GrantManager } from './components/GrantManager'; 
 
 const GrantsPlaceholder = () => (
   <div className="p-10 text-center bg-white rounded-xl shadow-sm border border-slate-200">
