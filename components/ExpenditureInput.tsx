@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/dbService';
-import { parseReceiptImage } from '../services/geminiService';
-import { Grant, Expenditure, IngestionItem, Deliverable, BudgetCategory } from '../types';
+import { Grant, Expenditure } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-import { Loader2, Upload, Scan, FileInput, Save, Trash2, Check } from 'lucide-react';
+import { Save, Upload, FileText, CheckCircle, RefreshCw } from 'lucide-react';
 
 interface ExpenditureInputProps {
   onNavigate?: (tab: string, data?: any) => void;
@@ -11,14 +10,13 @@ interface ExpenditureInputProps {
 }
 
 export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, initialData }) => {
-  const [queue, setQueue] = useState<IngestionItem[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<'scan' | 'manual'>('scan');
-
-  // Manual Form State
-  const [manualForm, setManualForm] = useState<Partial<Expenditure>>({
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Form State
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [form, setForm] = useState<Partial<Expenditure>>({
     date: new Date().toISOString().split('T')[0],
     amount: 0,
     vendor: '',
@@ -34,9 +32,9 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     setGrants(db.getGrants()); 
     setExpenditures(db.getExpenditures());
 
+    // Handle Deep Linking (e.g. from Grant Manager "Add Expenditure")
     if (initialData && initialData.action === 'prefill') {
-        setMode('manual');
-        setManualForm(prev => ({
+        setForm(prev => ({
             ...prev,
             grantId: initialData.grantId,
             deliverableId: initialData.deliverableId,
@@ -45,98 +43,98 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     }
   }, [initialData]);
 
-  const uniqueVendors = Array.from(new Set(expenditures.map(e => e.vendor))).sort();
-  const uniquePurchasers = Array.from(new Set(expenditures.map(e => e.purchaser).filter((p): p is string => !!p))).sort();
-
-  const selectedGrant = grants.find(g => g.id === manualForm.grantId);
+  // --- Filtering Logic ---
+  const selectedGrant = grants.find(g => g.id === form.grantId);
   const availableDeliverables = selectedGrant?.deliverables || [];
-  const selectedDeliverable = availableDeliverables.find(d => d.id === manualForm.deliverableId);
+  const selectedDeliverable = availableDeliverables.find(d => d.id === form.deliverableId);
   const availableCategories = selectedDeliverable?.budgetCategories || [];
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const newItem: IngestionItem = { id: Date.now().toString(), rawImage: reader.result as string, parsedData: null, status: 'Scanning' };
-        setQueue(prev => [...prev, newItem]);
-        await processScan(newItem);
-      };
-      reader.readAsDataURL(file);
+  // Historic Data (Filtered by Grant if selected, otherwise all)
+  const relevantHistory = form.grantId 
+    ? expenditures.filter(e => e.grantId === form.grantId) 
+    : expenditures;
+    
+  const uniqueVendors = Array.from(new Set(relevantHistory.map(e => e.vendor))).sort();
+  const uniquePurchasers = Array.from(new Set(relevantHistory.map(e => e.purchaser).filter((p): p is string => !!p))).sort();
+
+  // --- Handlers ---
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setReceiptFile(e.target.files[0]);
     }
   };
 
-  const processScan = async (item: IngestionItem) => {
-    try {
-      setLoading(true);
-      const jsonString = await parseReceiptImage(item.rawImage);
-      const parsed = JSON.parse(jsonString);
-      setQueue(prev => prev.map(q => q.id === item.id ? { ...q, parsedData: parsed, status: 'Review' } : q));
-    } catch (err) {
-      alert("AI scan failed. Please enter details manually.");
-      setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'Review' } : q));
-    } finally { setLoading(false); }
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Allow clearing the input (empty string) without it turning into 0 immediately
+    setForm({ ...form, amount: val === '' ? undefined : parseFloat(val) });
   };
 
-  const saveExpenditure = async (data: any, receiptBase64?: string) => {
-    if(!data.grantId || !data.deliverableId || !data.categoryId) {
+  const handleSubmit = async () => {
+    if(!form.grantId || !form.deliverableId || !form.categoryId) {
         alert("Please select a Grant, Deliverable, and Budget Category.");
-        return false;
+        return;
+    }
+    if(!form.vendor || form.amount === undefined || form.amount === 0) {
+        alert("Vendor and Amount are required.");
+        return;
     }
 
+    // 1. Save File (if present)
     let savedPath = '';
-    if (receiptBase64 && (window as any).electronAPI) {
-      try {
-        savedPath = await (window as any).electronAPI.saveReceipt(receiptBase64, `receipt_${Date.now()}.png`);
-      } catch (e) { console.error("Save failed", e); }
+    if (receiptFile && (window as any).electronAPI) {
+        const reader = new FileReader();
+        reader.readAsDataURL(receiptFile);
+        await new Promise<void>(resolve => {
+            reader.onload = async () => {
+                const base64 = reader.result as string;
+                savedPath = await (window as any).electronAPI.saveReceipt(base64, `receipt_${Date.now()}_${receiptFile.name}`);
+                resolve();
+            };
+        });
     }
 
+    // 2. Create Transaction
     const newTx: Expenditure = {
       id: crypto.randomUUID(),
-      grantId: data.grantId,
-      deliverableId: data.deliverableId,
-      categoryId: data.categoryId,
-      date: data.date,
-      vendor: data.vendor,
-      amount: typeof data.amount === 'string' ? parseFloat(data.amount) || 0 : data.amount,
-      purchaser: data.purchaser || '',
-      justification: data.justification || '',
-      notes: data.notes || '',
-      receiptUrl: savedPath || receiptBase64,
+      grantId: form.grantId,
+      deliverableId: form.deliverableId,
+      categoryId: form.categoryId,
+      date: form.date || new Date().toISOString().split('T')[0],
+      vendor: form.vendor,
+      amount: form.amount || 0,
+      purchaser: form.purchaser || '',
+      justification: form.justification || '',
+      notes: form.notes || '',
+      receiptUrl: savedPath || '', 
       status: 'Approved'
     };
 
+    // 3. Save to DB
     db.addExpenditure(newTx);
-    setExpenditures(db.getExpenditures());
-    return true;
-  };
+    setExpenditures(db.getExpenditures()); // Refresh local history
 
-  const handleManualSubmit = async () => {
-    if (await saveExpenditure(manualForm)) {
-        alert("Expenditure Saved!");
-        setManualForm({ 
-            date: new Date().toISOString().split('T')[0], 
-            amount: 0, 
-            vendor: '', 
-            purchaser: '', 
-            justification: '', 
-            notes: '', 
-            grantId: '', 
-            deliverableId: '', 
-            categoryId: '' 
-        });
-    }
-  };
-
-  // Helper for input change to prevent NaN
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>, setter: Function, currentData: any) => {
-    const val = e.target.value;
-    // Allow empty string to let user delete '0'
-    setter({...currentData, amount: val === '' ? '' : parseFloat(val)});
+    alert("Expenditure saved successfully!");
+    
+    // 4. Reset Form (Keep Grant context? No, user requested reset)
+    setForm({
+        date: new Date().toISOString().split('T')[0],
+        amount: 0,
+        vendor: '',
+        purchaser: '',
+        justification: '',
+        notes: '',
+        grantId: '',
+        deliverableId: '',
+        categoryId: ''
+    });
+    setReceiptFile(null);
+    if(fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+      {/* Datalists for Autocomplete */}
       <datalist id="vendors">
         {uniqueVendors.map((v, i) => <option key={i} value={v} />)}
       </datalist>
@@ -144,94 +142,124 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
         {uniquePurchasers.map((p, i) => <option key={i} value={p} />)}
       </datalist>
 
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <h2 className="text-2xl font-bold text-slate-900">Expenditure Input</h2>
-        <div className="flex bg-slate-100 p-1 rounded-lg">
-          <button onClick={() => setMode('scan')} className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium ${mode === 'scan' ? 'bg-white shadow text-brand-600' : 'text-slate-500'}`}><Scan size={18} /> <span>Scanner</span></button>
-          <button onClick={() => setMode('manual')} className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium ${mode === 'manual' ? 'bg-white shadow text-brand-600' : 'text-slate-500'}`}><FileInput size={18} /> <span>Manual</span></button>
-        </div>
+      <div className="flex items-center space-x-3 pb-4 border-b border-slate-200">
+        <h2 className="text-2xl font-bold text-slate-900">New Expenditure</h2>
       </div>
 
-      {mode === 'manual' ? (
-        <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-sm border border-slate-200 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <HighContrastSelect label="Grant" options={grants.map(g => ({ value: g.id, label: g.name }))} value={manualForm.grantId || ''} onChange={e => setManualForm({...manualForm, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
-                <HighContrastSelect label="Deliverable" options={availableDeliverables.map(d => ({ value: d.id, label: d.description }))} value={manualForm.deliverableId || ''} onChange={e => setManualForm({...manualForm, deliverableId: e.target.value, categoryId: ''})} />
-                <HighContrastSelect label="Category" options={availableCategories.map(c => ({ value: c.id, label: c.name }))} value={manualForm.categoryId || ''} onChange={e => setManualForm({...manualForm, categoryId: e.target.value})} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <HighContrastInput label="Date" type="date" value={manualForm.date || ''} onChange={e => setManualForm({...manualForm, date: e.target.value})} />
-                <HighContrastInput label="Amount" type="number" value={manualForm.amount ?? ''} onChange={e => handleAmountChange(e, setManualForm, manualForm)} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <HighContrastInput label="Vendor" list="vendors" value={manualForm.vendor || ''} onChange={e => setManualForm({...manualForm, vendor: e.target.value})} />
-                <HighContrastInput label="Purchaser" list="purchasers" value={manualForm.purchaser || ''} onChange={e => setManualForm({...manualForm, purchaser: e.target.value})} />
-            </div>
-            <HighContrastTextArea label="Justification" rows={2} value={manualForm.justification || ''} onChange={e => setManualForm({...manualForm, justification: e.target.value})} />
-            <HighContrastTextArea label="Notes" rows={2} value={manualForm.notes || ''} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
-            <button onClick={handleManualSubmit} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 rounded-lg flex justify-center items-center"><Save size={20} className="mr-2"/> Save Expenditure</button>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="flex justify-end relative">
-            <input type="file" accept="image/*" className="absolute inset-0 w-full opacity-0 cursor-pointer" onChange={handleFileUpload} disabled={loading} />
-            <button className="bg-brand-600 text-white px-6 py-3 rounded-lg flex items-center space-x-2 shadow-md hover:bg-brand-700">{loading ? <Loader2 className="animate-spin" /> : <Upload />} <span>Upload Receipt</span></button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {queue.map(item => (
-              <ReviewCard key={item.id} item={item} grants={grants} onSave={saveExpenditure} onRemove={(id: string) => setQueue(q => q.filter(i => i.id !== id))} vendors={uniqueVendors} purchasers={uniquePurchasers} />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-interface ReviewCardProps {
-  item: IngestionItem;
-  grants: Grant[];
-  onSave: (data: any, receiptBase64?: string) => Promise<boolean>;
-  onRemove: (id: string) => void;
-  vendors: string[];
-  purchasers: string[];
-}
-
-const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove, vendors, purchasers }) => {
-  const [data, setData] = useState<Partial<Expenditure>>(item.parsedData || { amount: 0, date: '', vendor: '' });
-  
-  const selectedGrant = grants.find((g:Grant) => g.id === data.grantId);
-  const availableDeliverables = selectedGrant?.deliverables || [];
-  const selectedDeliverable = availableDeliverables.find((d:Deliverable) => d.id === data.deliverableId);
-  const availableCategories = selectedDeliverable?.budgetCategories || [];
-
-  useEffect(() => { if (item.parsedData) setData(d => ({ ...d, ...item.parsedData })); }, [item.parsedData]);
-
-  if (item.status === 'Scanning') return <div className="bg-white p-6 rounded-xl shadow-md flex justify-center items-center h-64"><Loader2 className="animate-spin text-brand-500" size={32} /></div>;
-
-  return (
-    <div className="bg-white p-4 rounded-xl shadow-md border border-slate-200 space-y-3">
-      <img src={item.rawImage} className="h-32 w-full object-contain bg-slate-100 rounded" />
-      <div className="space-y-2">
-        <HighContrastSelect label="Grant" options={grants.map((g:Grant) => ({ value: g.id, label: g.name }))} value={data.grantId || ''} onChange={(e:any) => setData({...data, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
-        {data.grantId && <HighContrastSelect label="Deliverable" options={availableDeliverables.map((d:Deliverable) => ({ value: d.id, label: d.description }))} value={data.deliverableId || ''} onChange={(e:any) => setData({...data, deliverableId: e.target.value, categoryId: ''})} />}
-        {data.deliverableId && <HighContrastSelect label="Category" options={availableCategories.map((c:BudgetCategory) => ({ value: c.id, label: c.name }))} value={data.categoryId || ''} onChange={(e:any) => setData({...data, categoryId: e.target.value})} />}
+      <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 space-y-6">
         
-        <HighContrastInput label="Vendor" list="vendors" value={data.vendor || ''} onChange={e => setData({...data, vendor: e.target.value})} />
-        <div className="grid grid-cols-2 gap-2">
-            <HighContrastInput label="Date" type="date" value={data.date || ''} onChange={e => setData({...data, date: e.target.value})} />
-            <HighContrastInput label="Amount" type="number" value={data.amount ?? ''} onChange={e => {
-                const val = e.target.value;
-                setData({...data, amount: val === '' ? undefined : parseFloat(val)});
-            }} />
+        {/* Hierarchy Selection */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 bg-slate-50 rounded-lg border border-slate-100">
+            <HighContrastSelect 
+                label="1. Select Grant" 
+                options={[{value: '', label: '-- Select Grant --'}, ...grants.map(g => ({ value: g.id, label: g.name }))]} 
+                value={form.grantId} 
+                onChange={e => setForm({...form, grantId: e.target.value, deliverableId: '', categoryId: ''})} 
+            />
+            <HighContrastSelect 
+                label="2. Select Deliverable" 
+                options={[{value: '', label: '-- Select Deliverable --'}, ...availableDeliverables.map(d => ({ value: d.id, label: d.sectionReference + ': ' + d.description }))]} 
+                value={form.deliverableId} 
+                disabled={!form.grantId}
+                onChange={e => setForm({...form, deliverableId: e.target.value, categoryId: ''})} 
+            />
+            <HighContrastSelect 
+                label="3. Budget Category" 
+                options={[{value: '', label: '-- Select Category --'}, ...availableCategories.map(c => ({ value: c.id, label: c.name }))]} 
+                value={form.categoryId} 
+                disabled={!form.deliverableId}
+                onChange={e => setForm({...form, categoryId: e.target.value})} 
+            />
         </div>
-        <HighContrastInput label="Purchaser" list="purchasers" value={data.purchaser || ''} onChange={e => setData({...data, purchaser: e.target.value})} />
-        <HighContrastTextArea label="Justification" rows={2} value={data.justification || ''} onChange={e => setData({...data, justification: e.target.value})} />
-        <HighContrastTextArea label="Notes" rows={2} value={data.notes || ''} onChange={e => setData({...data, notes: e.target.value})} />
-      </div>
-      <div className="flex gap-2 pt-2">
-        <button onClick={() => onRemove(item.id)} className="flex-1 py-2 text-red-600 bg-red-50 rounded hover:bg-red-100"><Trash2 className="mx-auto" size={18} /></button>
-        <button onClick={() => { onSave(data, item.rawImage).then((res:boolean) => { if(res) onRemove(item.id) }) }} className="flex-1 py-2 text-white bg-brand-600 rounded hover:bg-brand-700"><Check className="mx-auto" size={18} /></button>
+
+        {/* Core Details */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <HighContrastInput 
+                label="Transaction Date" 
+                type="date" 
+                value={form.date || ''} 
+                onChange={e => setForm({...form, date: e.target.value})} 
+            />
+            <HighContrastInput 
+                label="Amount ($)" 
+                type="number" 
+                placeholder="0.00"
+                value={form.amount ?? ''} 
+                onChange={handleAmountChange} 
+            />
+        </div>
+
+        {/* Vendor & Purchaser (With History) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <HighContrastInput 
+                label="Vendor / Payee" 
+                list="vendors" 
+                placeholder="Start typing or select..." 
+                value={form.vendor || ''} 
+                onChange={e => setForm({...form, vendor: e.target.value})} 
+            />
+            <HighContrastInput 
+                label="Purchaser / Employee" 
+                list="purchasers" 
+                placeholder="Who made the purchase?"
+                value={form.purchaser || ''} 
+                onChange={e => setForm({...form, purchaser: e.target.value})} 
+            />
+        </div>
+
+        {/* Text Areas */}
+        <div className="space-y-4">
+            <HighContrastTextArea 
+                label="Justification (Required)" 
+                rows={2} 
+                placeholder="Why was this purchase necessary for the deliverable?"
+                value={form.justification || ''} 
+                onChange={e => setForm({...form, justification: e.target.value})} 
+            />
+            <HighContrastTextArea 
+                label="Notes / Additional Details" 
+                rows={2} 
+                placeholder="Invoice #, tax details, or other notes..."
+                value={form.notes || ''} 
+                onChange={e => setForm({...form, notes: e.target.value})} 
+            />
+        </div>
+
+        {/* Receipt Upload */}
+        <div className="pt-2">
+            <label className="block text-sm font-bold text-slate-700 mb-2">Receipt / Invoice</label>
+            <div className="flex items-center space-x-4">
+                <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg border border-slate-300 flex items-center transition-colors">
+                    <Upload size={18} className="mr-2" />
+                    <span>{receiptFile ? 'Change File' : 'Attach File'}</span>
+                    <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        accept="image/*,.pdf" 
+                        className="hidden" 
+                        onChange={handleFileChange}
+                    />
+                </label>
+                {receiptFile && (
+                    <div className="flex items-center text-sm text-green-700 bg-green-50 px-3 py-1 rounded-md border border-green-200">
+                        <FileText size={16} className="mr-2" />
+                        <span className="truncate max-w-xs">{receiptFile.name}</span>
+                    </div>
+                )}
+            </div>
+        </div>
+
+        {/* Actions */}
+        <div className="pt-6 border-t border-slate-100 flex justify-end">
+             <button 
+                onClick={handleSubmit} 
+                className="bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 px-8 rounded-lg shadow-md flex items-center space-x-2 transition-all transform active:scale-95"
+            >
+                <Save size={20} />
+                <span>Save Expenditure</span>
+             </button>
+        </div>
+
       </div>
     </div>
   );

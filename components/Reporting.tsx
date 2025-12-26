@@ -53,7 +53,6 @@ export const Reporting: React.FC = () => {
     value: expendituresByCategory[key]
   }));
   
-  // Calculate Remaining
   if (selectedGrant) {
     const totalSpent = expenditures.reduce((sum, t) => sum + t.amount, 0);
     const remaining = Math.max(0, selectedGrant.totalAward - totalSpent);
@@ -130,7 +129,7 @@ export const Reporting: React.FC = () => {
 
       {selectedGrant && (
         <div className="space-y-8">
-           {/* Visuals */}
+           {/* Visuals (Pie Chart & Summary) */}
            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-1 bg-white p-4 rounded-xl shadow-sm border border-slate-200 h-64">
                  <h4 className="font-bold text-slate-700 mb-2 text-center">Budget Utilization</h4>
@@ -162,7 +161,7 @@ export const Reporting: React.FC = () => {
               </div>
            </div>
 
-           {/* Ledger */}
+           {/* Ledger Table */}
            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
              <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                <h3 className="font-bold text-slate-800">Expenditure Ledger</h3>
@@ -187,14 +186,14 @@ export const Reporting: React.FC = () => {
                      <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
                        {editingId === t.id ? (
                          <>
-                           <td className="p-2"><HighContrastInput type="date" value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} /></td>
-                           <td className="p-2"><HighContrastInput value={editForm.vendor} onChange={e => setEditForm({...editForm, vendor: e.target.value})} /></td>
-                           <td className="p-2"><HighContrastInput value={editForm.purchaser} onChange={e => setEditForm({...editForm, purchaser: e.target.value})} /></td>
-                           <td className="p-2"><HighContrastTextArea rows={2} value={editForm.justification} onChange={e => setEditForm({...editForm, justification: e.target.value})} /></td>
+                           <td className="p-2"><HighContrastInput type="date" value={editForm.date || ''} onChange={e => setEditForm({...editForm, date: e.target.value})} /></td>
+                           <td className="p-2"><HighContrastInput value={editForm.vendor || ''} onChange={e => setEditForm({...editForm, vendor: e.target.value})} /></td>
+                           <td className="p-2"><HighContrastInput value={editForm.purchaser || ''} onChange={e => setEditForm({...editForm, purchaser: e.target.value})} /></td>
+                           <td className="p-2"><HighContrastTextArea rows={2} value={editForm.justification || ''} onChange={e => setEditForm({...editForm, justification: e.target.value})} /></td>
                            <td className="p-2 text-xs text-slate-400">Locked for Audit</td>
-                           <td className="p-2"><HighContrastInput type="number" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})} /></td>
+                           <td className="p-2"><HighContrastInput type="number" value={editForm.amount ?? ''} onChange={e => setEditForm({...editForm, amount: e.target.value === '' ? undefined : parseFloat(e.target.value)})} /></td>
                            
-                           {/* NEW: Receipt Upload/Replace Button */}
+                           {/* Receipt Upload/Replace */}
                            <td className="p-2 text-center">
                               <label className="cursor-pointer flex flex-col items-center justify-center text-xs text-brand-600 bg-brand-50 p-2 rounded hover:bg-brand-100">
                                   <Upload size={14} />
@@ -212,7 +211,7 @@ export const Reporting: React.FC = () => {
                                               if ((window as any).electronAPI) {
                                                   const path = await (window as any).electronAPI.saveReceipt(base64, `receipt_${Date.now()}.png`);
                                                   setEditForm(prev => ({ ...prev, receiptUrl: path }));
-                                                  alert("Receipt attached to draft. Click Save to confirm.");
+                                                  alert("Receipt attached. Click Save.");
                                               }
                                           };
                                           reader.readAsDataURL(file);
