@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { generateEmailTemplate } from '../services/geminiService';
 import { EmailTemplate, Grant } from '../types';
-import { HighContrastInput, HighContrastTextArea, HighContrastSelect } from './ui/Input';
+import { HighContrastSelect, HighContrastInput, HighContrastTextArea } from './ui/Input';
 import { Copy, Check, Plus, Trash2, Edit2, Save, Sparkles, Loader2 } from 'lucide-react';
 
 interface CommunicationProps {
@@ -35,6 +35,7 @@ export const Communication: React.FC<CommunicationProps> = ({ initialData }) => 
     setGrants(db.getGrants());
   };
 
+  // Handle incoming data (e.g. from Expense Rejection)
   useEffect(() => {
     if (initialData && initialData.action === 'draft_rejection') {
       const template = templates.find(t => t.id === initialData.templateId);
@@ -47,10 +48,12 @@ export const Communication: React.FC<CommunicationProps> = ({ initialData }) => 
         setPreview(filledBody);
       }
     } else if (templates.length > 0 && !selectedTemplate && !isCreating) {
+      // Default to first template if nothing selected
       setSelectedTemplate(templates[0]);
     }
   }, [initialData, templates, isCreating, selectedTemplate]);
 
+  // Standard Preview Update
   useEffect(() => {
     if (selectedTemplate && !isEditing && !isCreating && !initialData) {
       let text = selectedTemplate.body;
@@ -127,6 +130,7 @@ export const Communication: React.FC<CommunicationProps> = ({ initialData }) => 
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[calc(100vh-8rem)]">
+      {/* Sidebar List */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
           <h3 className="font-bold text-slate-800">Templates</h3>
@@ -152,6 +156,7 @@ export const Communication: React.FC<CommunicationProps> = ({ initialData }) => 
         </div>
       </div>
 
+      {/* Editor / Preview Area */}
       <div className="md:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
           <div className="flex items-center space-x-2">
