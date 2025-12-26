@@ -37,6 +37,11 @@ export const IngestionQueue: React.FC = () => {
   };
 
   const processItem = async (item: IngestionItem) => {
+    if (!process.env.API_KEY) {
+      alert("Missing Gemini API Key. Please create a .env file with API_KEY=your_key");
+      setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'Review' } : q));
+      return;
+    }
     try {
       setLoading(true);
       const jsonString = await parseReceiptImage(item.rawImage);

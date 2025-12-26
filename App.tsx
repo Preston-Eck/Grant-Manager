@@ -7,6 +7,7 @@ import { Reporting } from './components/Reporting';
 import { Communication } from './components/Communication';
 import { Feedback } from './components/Feedback';
 import { DataManagement } from './components/DataManagement';
+import { GrantManager } from './components/GrantManager'; // <--- ADD THIS LINE
 
 const GrantsPlaceholder = () => (
   <div className="p-10 text-center bg-white rounded-xl shadow-sm border border-slate-200">
@@ -26,7 +27,7 @@ const App: React.FC = () => {
       case 'reporting': return <Reporting />;
       case 'communication': return <Communication />;
       case 'feedback': return <Feedback />;
-      case 'grants': return <GrantsPlaceholder />;
+      case 'grants': return <GrantManager />;
       case 'settings': return <DataManagement />;
       default: return <Dashboard onNavigate={setActiveTab} />;
     }
