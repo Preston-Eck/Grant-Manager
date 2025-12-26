@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, Transaction } from '../types';
-import { HighContrastSelect } from './ui/Input';
-import { Download, FileText, Table } from 'lucide-react';
+import { HighContrastSelect, HighContrastInput } from './ui/Input';
+import { Download, FileText, Table, Edit2, Save, X } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -11,6 +11,10 @@ export const Reporting: React.FC = () => {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [selectedGrantId, setSelectedGrantId] = useState<string>('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  
+  // Editing State
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<Transaction>>({});
 
   useEffect(() => {
     const g = db.getGrants();
@@ -18,10 +22,14 @@ export const Reporting: React.FC = () => {
     if (g.length > 0) setSelectedGrantId(g[0].id);
   }, []);
 
-  useEffect(() => {
+  const refreshTransactions = () => {
     if (selectedGrantId) {
       setTransactions(db.getTransactions(selectedGrantId));
     }
+  };
+
+  useEffect(() => {
+    refreshTransactions();
   }, [selectedGrantId]);
 
   const selectedGrant = grants.find(g => g.id === selectedGrantId);
@@ -37,12 +45,47 @@ export const Reporting: React.FC = () => {
     value: expensesByCategory[key]
   }));
 
+  const startEdit = (t: Transaction) => {
+    setEditingId(t.id);
+    setEditForm({...t});
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({});
+  };
+
+  const saveEdit = () => {
+    if (!editForm.id) return;
+    
+    // In a real DB, we would have an update method. Here we manually update the list.
+    const allTransactions = db.getTransactions(); // Get ALL, not just filtered
+    const index = allTransactions.findIndex(t => t.id === editForm.id);
+    
+    if (index !== -1) {
+       allTransactions[index] = { ...allTransactions[index], ...editForm };
+       localStorage.setItem('eckerdt_transactions', JSON.stringify(allTransactions));
+       
+       // Update Grant totals
+       const currentGrant = grants.find(g => g.id === editForm.grantId);
+       if(currentGrant) {
+         // Re-calculate spent for this grant
+         const grantTx = allTransactions.filter(t => t.grantId === currentGrant.id);
+         currentGrant.spent = grantTx.reduce((sum, t) => sum + t.amount, 0);
+         db.saveGrant(currentGrant);
+       }
+       
+       refreshTransactions();
+       setEditingId(null);
+    }
+  };
+
   const downloadCSV = () => {
     if (!transactions.length) return;
     const headers = ['Date', 'Vendor', 'Category', 'Amount', 'Status', 'ID'];
     const rows = transactions.map(t => [
       t.date,
-      `"${t.vendor}"`, // Escape commas
+      `"${t.vendor}"`, 
       t.category,
       t.amount.toFixed(2),
       t.status,
@@ -67,7 +110,7 @@ export const Reporting: React.FC = () => {
   return (
     <div className="space-y-6 print:p-0">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center print:hidden">
-        <h2 className="text-2xl font-bold text-slate-900">Reporting Hub</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Reporting & Management Hub</h2>
         <div className="w-full md:w-64 mt-4 md:mt-0">
           <HighContrastSelect 
             options={grants.map(g => ({ value: g.id, label: g.name }))}
@@ -79,7 +122,6 @@ export const Reporting: React.FC = () => {
 
       {selectedGrant && (
         <>
-          {/* Report Type A: Executive Summary Style */}
           <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 print:shadow-none print:border-none">
             <div className="border-b border-slate-300 pb-4 mb-6 flex justify-between items-center">
               <div>
@@ -113,7 +155,6 @@ export const Reporting: React.FC = () => {
               </div>
             </div>
 
-            {/* Report Type B: Visuals */}
             <div className="mb-8 h-80 w-full print:break-inside-avoid">
               <h4 className="text-lg font-bold text-slate-800 mb-4">Budget vs. Actuals by Category</h4>
               {chartData.length > 0 ? (
@@ -142,7 +183,6 @@ export const Reporting: React.FC = () => {
               )}
             </div>
 
-            {/* Report Type C: Transaction Dump (Preview) */}
             <div>
               <h4 className="text-lg font-bold text-slate-800 mb-4">Transaction Ledger</h4>
               <table className="w-full text-sm text-left border-collapse">
@@ -152,15 +192,34 @@ export const Reporting: React.FC = () => {
                     <th className="p-3">Vendor</th>
                     <th className="p-3">Category</th>
                     <th className="p-3 text-right">Amount</th>
+                    <th className="p-3 print:hidden">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {transactions.map(t => (
                     <tr key={t.id} className="border-b border-slate-200">
-                      <td className="p-3">{t.date}</td>
-                      <td className="p-3 font-semibold">{t.vendor}</td>
-                      <td className="p-3">{t.category}</td>
-                      <td className="p-3 text-right font-mono">${t.amount.toFixed(2)}</td>
+                      {editingId === t.id ? (
+                        <>
+                          <td className="p-2"><HighContrastInput type="date" value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} /></td>
+                          <td className="p-2"><HighContrastInput value={editForm.vendor} onChange={e => setEditForm({...editForm, vendor: e.target.value})} /></td>
+                          <td className="p-2"><HighContrastInput value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value})} /></td>
+                          <td className="p-2"><HighContrastInput type="number" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})} /></td>
+                          <td className="p-2 flex space-x-2">
+                             <button onClick={saveEdit} className="text-green-600"><Save size={18} /></button>
+                             <button onClick={cancelEdit} className="text-red-600"><X size={18} /></button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="p-3">{t.date}</td>
+                          <td className="p-3 font-semibold">{t.vendor}</td>
+                          <td className="p-3">{t.category}</td>
+                          <td className="p-3 text-right font-mono">${t.amount.toFixed(2)}</td>
+                          <td className="p-3 print:hidden">
+                            <button onClick={() => startEdit(t)} className="text-slate-400 hover:text-brand-600"><Edit2 size={16} /></button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { generateEmailTemplate } from '../services/geminiService';
 import { EmailTemplate, Grant } from '../types';
-import { HighContrastSelect, HighContrastInput, HighContrastTextArea } from './ui/Input';
+import { HighContrastInput, HighContrastTextArea, HighContrastSelect } from './ui/Input';
 import { Copy, Check, Plus, Trash2, Edit2, Save, Sparkles, Loader2 } from 'lucide-react';
 
 interface CommunicationProps {

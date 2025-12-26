@@ -6,7 +6,18 @@ const ai = new GoogleGenAI({ apiKey });
 export const parseReceiptImage = async (base64Image: string): Promise<string> => {
   if (!apiKey) throw new Error("API Key missing");
 
-  // Strip prefix if present (e.g. data:image/png;base64,)
+  // 1. Dynamic Mime Type Detection
+  // Check if the string starts with a data URI scheme
+  let mimeType = 'image/jpeg'; // Default
+  if (base64Image.startsWith('data:image/png;')) {
+    mimeType = 'image/png';
+  } else if (base64Image.startsWith('data:image/jpeg;') || base64Image.startsWith('data:image/jpg;')) {
+    mimeType = 'image/jpeg';
+  } else if (base64Image.startsWith('data:image/webp;')) {
+    mimeType = 'image/webp';
+  }
+
+  // 2. Strip the header for the API payload
   const base64Data = base64Image.split(',')[1] || base64Image;
 
   try {
@@ -16,7 +27,7 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
         parts: [
           {
             inlineData: {
-              mimeType: 'image/jpeg', 
+              mimeType: mimeType, 
               data: base64Data
             }
           },
@@ -31,7 +42,6 @@ export const parseReceiptImage = async (base64Image: string): Promise<string> =>
       }
     });
 
-    // FIX: Fallback to empty string if text is undefined
     return response.text || "{}"; 
   } catch (error) {
     console.error("Gemini Vision Error:", error);
