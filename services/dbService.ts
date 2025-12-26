@@ -12,8 +12,11 @@ const INITIAL_GRANTS: Grant[] = [
     endDate: '2023-12-31',
     status: GrantStatus.Active,
     reports: [],
-    // FIX: Added required attachments array
     attachments: [],
+    // NEW FIELDS
+    indirectCostRate: 10.0, // 10% de minimis
+    requiredMatchAmount: 5000,
+    auditLog: [],
     deliverables: [
       {
         id: 'd-1',
@@ -46,7 +49,6 @@ class DBService {
   }
 
   private init() {
-    // 1. Load or Seed Data
     if (!localStorage.getItem(this.grantsKey)) {
       localStorage.setItem(this.grantsKey, JSON.stringify(INITIAL_GRANTS));
     }
@@ -56,8 +58,6 @@ class DBService {
     if (!localStorage.getItem(this.templatesKey)) {
       localStorage.setItem(this.templatesKey, JSON.stringify(INITIAL_TEMPLATES));
     }
-
-    // 2. Run Migration (Fix stale data)
     this.migrate();
   }
 
@@ -65,16 +65,28 @@ class DBService {
     try {
       const rawGrants = JSON.parse(localStorage.getItem(this.grantsKey) || '[]');
       const updatedGrants = rawGrants.map((g: any) => {
-        // Fix: Rename budget to totalAward if missing
+        // Migration: Add new fields if missing
+        if (g.indirectCostRate === undefined) g.indirectCostRate = 0;
+        if (g.requiredMatchAmount === undefined) g.requiredMatchAmount = 0;
+        if (!g.auditLog) g.auditLog = [];
+        if (!g.attachments) g.attachments = [];
+        
+        // Rename legacy field
         if (g.totalAward === undefined && g.budget !== undefined) {
           g.totalAward = g.budget;
         }
-        // Fix: Ensure new arrays exist
-        if (!g.deliverables) g.deliverables = [];
-        if (!g.reports) g.reports = [];
         return g;
       });
       localStorage.setItem(this.grantsKey, JSON.stringify(updatedGrants));
+      
+      // Migrate Expenditures to have fundingSource
+      const rawExp = JSON.parse(localStorage.getItem(this.expendituresKey) || '[]');
+      const updatedExp = rawExp.map((e: any) => {
+          if(!e.fundingSource) e.fundingSource = 'Grant';
+          return e;
+      });
+      localStorage.setItem(this.expendituresKey, JSON.stringify(updatedExp));
+
     } catch (e) {
       console.error("Migration failed", e);
     }

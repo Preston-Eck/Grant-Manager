@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/dbService';
-import { Grant, Expenditure } from '../types';
+import { Grant, Expenditure, IngestionItem } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-import { Save, Upload, FileText, CheckCircle, RefreshCw } from 'lucide-react';
+// FIX: Added Loader2 to imports
+import { Save, Upload, FileText, Scan, FileInput, Trash2, Check, Loader2 } from 'lucide-react';
+import { parseReceiptImage } from '../services/geminiService';
 
 interface ExpenditureInputProps {
   onNavigate?: (tab: string, data?: any) => void;
@@ -12,9 +14,14 @@ interface ExpenditureInputProps {
 export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, initialData }) => {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<'scan' | 'manual'>('manual');
   
-  // Form State
+  // Scanner State
+  const [queue, setQueue] = useState<IngestionItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Manual Form State
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [form, setForm] = useState<Partial<Expenditure>>({
     date: new Date().toISOString().split('T')[0],
@@ -25,15 +32,16 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     notes: '',
     grantId: '',
     deliverableId: '',
-    categoryId: ''
+    categoryId: '',
+    fundingSource: 'Grant'
   });
 
   useEffect(() => { 
     setGrants(db.getGrants()); 
     setExpenditures(db.getExpenditures());
 
-    // Handle Deep Linking (e.g. from Grant Manager "Add Expenditure")
     if (initialData && initialData.action === 'prefill') {
+        setMode('manual');
         setForm(prev => ({
             ...prev,
             grantId: initialData.grantId,
@@ -49,24 +57,17 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
   const selectedDeliverable = availableDeliverables.find(d => d.id === form.deliverableId);
   const availableCategories = selectedDeliverable?.budgetCategories || [];
 
-  // Historic Data (Filtered by Grant if selected, otherwise all)
-  const relevantHistory = form.grantId 
-    ? expenditures.filter(e => e.grantId === form.grantId) 
-    : expenditures;
-    
+  const relevantHistory = form.grantId ? expenditures.filter(e => e.grantId === form.grantId) : expenditures;
   const uniqueVendors = Array.from(new Set(relevantHistory.map(e => e.vendor))).sort();
   const uniquePurchasers = Array.from(new Set(relevantHistory.map(e => e.purchaser).filter((p): p is string => !!p))).sort();
 
-  // --- Handlers ---
+  // --- Manual Handlers ---
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setReceiptFile(e.target.files[0]);
-    }
+    if (e.target.files && e.target.files[0]) setReceiptFile(e.target.files[0]);
   };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    // Allow clearing the input (empty string) without it turning into 0 immediately
     setForm({ ...form, amount: val === '' ? undefined : parseFloat(val) });
   };
 
@@ -80,7 +81,6 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
         return;
     }
 
-    // 1. Save File (if present)
     let savedPath = '';
     if (receiptFile && (window as any).electronAPI) {
         const reader = new FileReader();
@@ -94,7 +94,6 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
         });
     }
 
-    // 2. Create Transaction
     const newTx: Expenditure = {
       id: crypto.randomUUID(),
       grantId: form.grantId,
@@ -106,17 +105,15 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
       purchaser: form.purchaser || '',
       justification: form.justification || '',
       notes: form.notes || '',
+      fundingSource: form.fundingSource || 'Grant',
       receiptUrl: savedPath || '', 
       status: 'Approved'
     };
 
-    // 3. Save to DB
     db.addExpenditure(newTx);
-    setExpenditures(db.getExpenditures()); // Refresh local history
-
+    setExpenditures(db.getExpenditures());
     alert("Expenditure saved successfully!");
     
-    // 4. Reset Form (Keep Grant context? No, user requested reset)
     setForm({
         date: new Date().toISOString().split('T')[0],
         amount: 0,
@@ -126,141 +123,165 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
         notes: '',
         grantId: '',
         deliverableId: '',
-        categoryId: ''
+        categoryId: '',
+        fundingSource: 'Grant'
     });
     setReceiptFile(null);
     if(fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // --- Scanner Handlers ---
+  const handleScanUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const newItem: IngestionItem = { id: Date.now().toString(), rawImage: reader.result as string, parsedData: null, status: 'Scanning' };
+        setQueue(prev => [...prev, newItem]);
+        
+        try {
+            setLoading(true);
+            const jsonString = await parseReceiptImage(newItem.rawImage);
+            const parsed = JSON.parse(jsonString);
+            setQueue(prev => prev.map(q => q.id === newItem.id ? { ...q, parsedData: parsed, status: 'Review' } : q));
+        } catch (err) {
+            alert("AI scan failed. Switching to manual review.");
+            setQueue(prev => prev.map(q => q.id === newItem.id ? { ...q, status: 'Review' } : q));
+        } finally { setLoading(false); }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const saveScannedItem = async (item: IngestionItem, data: any) => {
+      if(!data.grantId) return alert("Grant is required.");
+      
+      let savedPath = '';
+      if ((window as any).electronAPI) {
+          savedPath = await (window as any).electronAPI.saveReceipt(item.rawImage, `receipt_${Date.now()}.png`);
+      }
+
+      const newTx: Expenditure = {
+          id: crypto.randomUUID(),
+          grantId: data.grantId,
+          deliverableId: data.deliverableId || '',
+          categoryId: data.categoryId || '',
+          date: data.date,
+          vendor: data.vendor,
+          amount: parseFloat(data.amount),
+          purchaser: data.purchaser || '',
+          justification: data.justification || '',
+          notes: data.notes || '',
+          fundingSource: data.fundingSource || 'Grant',
+          receiptUrl: savedPath,
+          status: 'Approved'
+      };
+      db.addExpenditure(newTx);
+      setQueue(q => q.filter(i => i.id !== item.id));
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      {/* Datalists for Autocomplete */}
-      <datalist id="vendors">
-        {uniqueVendors.map((v, i) => <option key={i} value={v} />)}
-      </datalist>
-      <datalist id="purchasers">
-        {uniquePurchasers.map((p, i) => <option key={i} value={p} />)}
-      </datalist>
+      <datalist id="vendors">{uniqueVendors.map((v, i) => <option key={i} value={v} />)}</datalist>
+      <datalist id="purchasers">{uniquePurchasers.map((p, i) => <option key={i} value={p} />)}</datalist>
 
-      <div className="flex items-center space-x-3 pb-4 border-b border-slate-200">
-        <h2 className="text-2xl font-bold text-slate-900">New Expenditure</h2>
+      <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+        <h2 className="text-2xl font-bold text-slate-900">Expenditure Input</h2>
+        <div className="flex bg-white border border-slate-300 rounded-lg p-1">
+            <button onClick={() => setMode('manual')} className={`px-4 py-2 text-sm font-medium rounded-md flex items-center ${mode === 'manual' ? 'bg-slate-100 text-brand-700' : 'text-slate-500 hover:text-slate-700'}`}><FileInput size={16} className="mr-2"/> Manual</button>
+            <button onClick={() => setMode('scan')} className={`px-4 py-2 text-sm font-medium rounded-md flex items-center ${mode === 'scan' ? 'bg-slate-100 text-brand-700' : 'text-slate-500 hover:text-slate-700'}`}><Scan size={16} className="mr-2"/> Scanner</button>
+        </div>
       </div>
 
-      <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 space-y-6">
-        
-        {/* Hierarchy Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 bg-slate-50 rounded-lg border border-slate-100">
-            <HighContrastSelect 
-                label="1. Select Grant" 
-                options={[{value: '', label: '-- Select Grant --'}, ...grants.map(g => ({ value: g.id, label: g.name }))]} 
-                value={form.grantId} 
-                onChange={e => setForm({...form, grantId: e.target.value, deliverableId: '', categoryId: ''})} 
-            />
-            <HighContrastSelect 
-                label="2. Select Deliverable" 
-                options={[{value: '', label: '-- Select Deliverable --'}, ...availableDeliverables.map(d => ({ value: d.id, label: d.sectionReference + ': ' + d.description }))]} 
-                value={form.deliverableId} 
-                disabled={!form.grantId}
-                onChange={e => setForm({...form, deliverableId: e.target.value, categoryId: ''})} 
-            />
-            <HighContrastSelect 
-                label="3. Budget Category" 
-                options={[{value: '', label: '-- Select Category --'}, ...availableCategories.map(c => ({ value: c.id, label: c.name }))]} 
-                value={form.categoryId} 
-                disabled={!form.deliverableId}
-                onChange={e => setForm({...form, categoryId: e.target.value})} 
-            />
-        </div>
+      {mode === 'manual' ? (
+        <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                <HighContrastSelect label="1. Grant" options={[{value: '', label: '-- Select --'}, ...grants.map(g => ({ value: g.id, label: g.name }))]} value={form.grantId} onChange={e => setForm({...form, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
+                <HighContrastSelect label="2. Deliverable" options={[{value: '', label: '-- Select --'}, ...availableDeliverables.map(d => ({ value: d.id, label: d.sectionReference + ': ' + d.description }))]} value={form.deliverableId} disabled={!form.grantId} onChange={e => setForm({...form, deliverableId: e.target.value, categoryId: ''})} />
+                <HighContrastSelect label="3. Category" options={[{value: '', label: '-- Select --'}, ...availableCategories.map(c => ({ value: c.id, label: c.name }))]} value={form.categoryId} disabled={!form.deliverableId} onChange={e => setForm({...form, categoryId: e.target.value})} />
+            </div>
 
-        {/* Core Details */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <HighContrastInput 
-                label="Transaction Date" 
-                type="date" 
-                value={form.date || ''} 
-                onChange={e => setForm({...form, date: e.target.value})} 
-            />
-            <HighContrastInput 
-                label="Amount ($)" 
-                type="number" 
-                placeholder="0.00"
-                value={form.amount ?? ''} 
-                onChange={handleAmountChange} 
-            />
-        </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <HighContrastInput label="Date" type="date" value={form.date || ''} onChange={e => setForm({...form, date: e.target.value})} />
+                <HighContrastInput label="Amount ($)" type="number" value={form.amount ?? ''} onChange={handleAmountChange} />
+                <HighContrastSelect label="Funding Source" options={[{value: 'Grant', label: 'Grant Funds'}, {value: 'Match', label: 'Match / Cost Share'}, {value: 'Third-Party', label: 'Third-Party / In-Kind'}]} value={form.fundingSource} onChange={e => setForm({...form, fundingSource: e.target.value as any})} />
+            </div>
 
-        {/* Vendor & Purchaser (With History) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <HighContrastInput 
-                label="Vendor / Payee" 
-                list="vendors" 
-                placeholder="Start typing or select..." 
-                value={form.vendor || ''} 
-                onChange={e => setForm({...form, vendor: e.target.value})} 
-            />
-            <HighContrastInput 
-                label="Purchaser / Employee" 
-                list="purchasers" 
-                placeholder="Who made the purchase?"
-                value={form.purchaser || ''} 
-                onChange={e => setForm({...form, purchaser: e.target.value})} 
-            />
-        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <HighContrastInput label="Vendor" list="vendors" value={form.vendor || ''} onChange={e => setForm({...form, vendor: e.target.value})} />
+                <HighContrastInput label="Purchaser" list="purchasers" value={form.purchaser || ''} onChange={e => setForm({...form, purchaser: e.target.value})} />
+            </div>
 
-        {/* Text Areas */}
-        <div className="space-y-4">
-            <HighContrastTextArea 
-                label="Justification (Required)" 
-                rows={2} 
-                placeholder="Why was this purchase necessary for the deliverable?"
-                value={form.justification || ''} 
-                onChange={e => setForm({...form, justification: e.target.value})} 
-            />
-            <HighContrastTextArea 
-                label="Notes / Additional Details" 
-                rows={2} 
-                placeholder="Invoice #, tax details, or other notes..."
-                value={form.notes || ''} 
-                onChange={e => setForm({...form, notes: e.target.value})} 
-            />
-        </div>
+            <HighContrastTextArea label="Justification" rows={2} value={form.justification || ''} onChange={e => setForm({...form, justification: e.target.value})} />
+            <HighContrastTextArea label="Notes" rows={2} value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})} />
 
-        {/* Receipt Upload */}
-        <div className="pt-2">
-            <label className="block text-sm font-bold text-slate-700 mb-2">Receipt / Invoice</label>
-            <div className="flex items-center space-x-4">
-                <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg border border-slate-300 flex items-center transition-colors">
-                    <Upload size={18} className="mr-2" />
-                    <span>{receiptFile ? 'Change File' : 'Attach File'}</span>
-                    <input 
-                        type="file" 
-                        ref={fileInputRef}
-                        accept="image/*,.pdf" 
-                        className="hidden" 
-                        onChange={handleFileChange}
-                    />
-                </label>
-                {receiptFile && (
-                    <div className="flex items-center text-sm text-green-700 bg-green-50 px-3 py-1 rounded-md border border-green-200">
-                        <FileText size={16} className="mr-2" />
-                        <span className="truncate max-w-xs">{receiptFile.name}</span>
-                    </div>
-                )}
+            <div className="pt-2">
+                <label className="block text-sm font-bold text-slate-700 mb-2">Receipt</label>
+                <div className="flex items-center space-x-4">
+                    <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg border border-slate-300 flex items-center transition-colors">
+                        <Upload size={18} className="mr-2" />
+                        <span>{receiptFile ? 'Change File' : 'Attach File'}</span>
+                        <input type="file" ref={fileInputRef} accept="image/*,.pdf" className="hidden" onChange={handleFileChange} />
+                    </label>
+                    {receiptFile && (
+                        <div className="flex items-center text-sm text-green-700 bg-green-50 px-3 py-1 rounded-md border border-green-200">
+                            <FileText size={16} className="mr-2" />
+                            <span className="truncate max-w-xs">{receiptFile.name}</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="pt-6 border-t border-slate-100 flex justify-end">
+                 <button onClick={handleSubmit} className="bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 px-8 rounded-lg shadow-md flex items-center space-x-2">
+                    <Save size={20} /> <span>Save Expenditure</span>
+                 </button>
             </div>
         </div>
-
-        {/* Actions */}
-        <div className="pt-6 border-t border-slate-100 flex justify-end">
-             <button 
-                onClick={handleSubmit} 
-                className="bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 px-8 rounded-lg shadow-md flex items-center space-x-2 transition-all transform active:scale-95"
-            >
-                <Save size={20} />
-                <span>Save Expenditure</span>
-             </button>
+      ) : (
+        <div className="space-y-6">
+            <div className="flex justify-end relative">
+                <input type="file" accept="image/*" className="absolute inset-0 w-full opacity-0 cursor-pointer" onChange={handleScanUpload} disabled={loading} />
+                <button className="bg-brand-600 text-white px-6 py-3 rounded-lg flex items-center space-x-2 shadow-md hover:bg-brand-700">{loading ? <Loader2 className="animate-spin" /> : <Upload />} <span>Upload & Scan Receipt</span></button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* FIX: Added implicit type annotation for id string */}
+                {queue.map(item => <ReviewCard key={item.id} item={item} grants={grants} onSave={saveScannedItem} onRemove={(id: string) => setQueue(q => q.filter(i => i.id !== id))} />)}
+            </div>
         </div>
-
-      </div>
+      )}
     </div>
   );
+};
+
+// FIX: Added Interface for ReviewCard props
+interface ReviewCardProps {
+  item: IngestionItem;
+  grants: Grant[];
+  onSave: (item: IngestionItem, data: any) => Promise<void>;
+  onRemove: (id: string) => void;
+}
+
+const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove }) => {
+    const [data, setData] = useState<any>(item.parsedData || { amount: 0, date: '', vendor: '', fundingSource: 'Grant' });
+    
+    useEffect(() => { if (item.parsedData) setData((d:any) => ({ ...d, ...item.parsedData })); }, [item.parsedData]);
+
+    if (item.status === 'Scanning') return <div className="bg-white p-6 rounded-xl shadow-md flex justify-center items-center h-64"><Loader2 className="animate-spin text-brand-500" size={32} /></div>;
+
+    return (
+        <div className="bg-white p-4 rounded-xl shadow-md border border-slate-200 space-y-3">
+            <img src={item.rawImage} className="h-32 w-full object-contain bg-slate-100 rounded" />
+            <div className="space-y-2">
+                <HighContrastSelect label="Grant" options={grants.map((g:Grant) => ({ value: g.id, label: g.name }))} value={data.grantId} onChange={(e:any) => setData({...data, grantId: e.target.value})} />
+                <HighContrastSelect label="Funding Source" options={[{value: 'Grant', label: 'Grant Funds'}, {value: 'Match', label: 'Match'}]} value={data.fundingSource} onChange={(e:any) => setData({...data, fundingSource: e.target.value})} />
+                <HighContrastInput label="Vendor" value={data.vendor} onChange={(e:any) => setData({...data, vendor: e.target.value})} />
+                <HighContrastInput label="Amount" type="number" value={data.amount} onChange={(e:any) => setData({...data, amount: e.target.value})} />
+            </div>
+            <div className="flex gap-2 pt-2">
+                <button onClick={() => onRemove(item.id)} className="flex-1 py-2 text-red-600 bg-red-50 rounded hover:bg-red-100"><Trash2 className="mx-auto" size={18} /></button>
+                <button onClick={() => onSave(item, data)} className="flex-1 py-2 text-white bg-brand-600 rounded hover:bg-brand-700"><Check className="mx-auto" size={18} /></button>
+            </div>
+        </div>
+    );
 };

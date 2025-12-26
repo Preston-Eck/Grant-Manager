@@ -45,6 +45,9 @@ export interface Grant {
   deliverables: Deliverable[];
   reports: ComplianceReport[];
   attachments: string[]; // NEW: Grant-level attachments
+  indirectCostRate: number; // e.g., 10.0 for 10%
+  requiredMatchAmount: number; // e.g., 10000
+  auditLog: AuditEvent[]; // NEW: Audit log
 }
 
 export interface Expenditure {
@@ -60,6 +63,8 @@ export interface Expenditure {
   status: 'Pending' | 'Approved' | 'Rejected';
   purchaser?: string;
   notes?: string;
+  fundingSource: 'Grant' | 'Match' | 'Third-Party'; // New field
+  isIndirectCost?: boolean; // Flag if this is an overhead charge
 }
 
 export interface EmailTemplate {
@@ -74,4 +79,11 @@ export interface IngestionItem {
   rawImage: string; 
   parsedData: Partial<Expenditure> | null;
   status: 'Scanning' | 'Review' | 'Approved';
+}
+
+export interface AuditEvent {
+  date: string;
+  user: string; // "System" or "User"
+  action: string; // "Budget Amended", "Expenditure Deleted"
+  details: string; // "Changed budget from $50k to $60k"
 }
