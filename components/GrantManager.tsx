@@ -12,17 +12,14 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   
-  // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
   const [currentGrant, setCurrentGrant] = useState<Partial<Grant>>({});
   const [activeTab, setActiveTab] = useState<'details' | 'deliverables' | 'reports'>('details');
 
-  // Tree View State
   const [expandedGrants, setExpandedGrants] = useState<Set<string>>(new Set());
   const [expandedDeliverables, setExpandedDeliverables] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  // Expenditure Detail Modal State
   const [selectedExpenditure, setSelectedExpenditure] = useState<Expenditure | null>(null);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
 
@@ -40,7 +37,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     });
   };
 
-  // --- CRUD Handlers ---
   const handleAddNew = () => {
     setCurrentGrant({ id: crypto.randomUUID(), status: GrantStatus.Active, totalAward: 0, deliverables: [], reports: [], attachments: [] });
     setIsEditing(true);
@@ -64,6 +60,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const handleAddAttachment = async () => {
      const input = document.createElement('input');
      input.type = 'file';
+     input.accept = ".pdf,.png,.jpg,.jpeg,.webp"; // Recommend types
      input.onchange = async (e: any) => {
          const file = e.target.files[0];
          if(file && (window as any).electronAPI) {
@@ -79,7 +76,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
      input.click();
   };
 
-  // Delete Attachment Logic
   const handleDeleteAttachment = (index: number) => {
       if (window.confirm("Are you sure you want to delete this attachment?")) {
           const newAttachments = [...(currentGrant.attachments || [])];
@@ -102,7 +98,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     }
   };
 
-  // --- Calculations for Tree View ---
   const getGrantStats = (g: Grant) => {
       const spent = expenditures.filter(e => e.grantId === g.id).reduce((s, e) => s + e.amount, 0);
       return { spent, remaining: (g.totalAward || 0) - spent };
@@ -118,7 +113,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       return { spent };
   };
 
-  // --- Helper to add new items in Tree View ---
   const quickAddDeliverable = (g: Grant) => {
       const newDel: Deliverable = { id: crypto.randomUUID(), sectionReference: 'New Del', description: '', allocatedValue: 0, dueDate: '', status: 'Pending', budgetCategories: [] };
       g.deliverables.push(newDel);
@@ -139,7 +133,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       if(onNavigate) onNavigate('ingestion', { action: 'prefill', grantId: gId, deliverableId: dId, categoryId: cId });
   };
 
-  // --- EDIT MODE SUB-FUNCTIONS ---
   const updateDeliverable = (idx:number, field: keyof Deliverable, val: any) => {
       const d = [...(currentGrant.deliverables || [])];
       d[idx] = { ...d[idx], [field]: val };
@@ -168,7 +161,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
           </button>
         </div>
 
-        {/* Tree View */}
         <div className="space-y-4">
           {grants.map(grant => {
             const gStats = getGrantStats(grant);
@@ -176,7 +168,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
             return (
               <div key={grant.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                {/* Level 1: Grant */}
                 <div className="p-4 flex items-center justify-between bg-slate-50 cursor-pointer hover:bg-slate-100" onClick={() => toggleExpand(grant.id, setExpandedGrants)}>
                    <div className="flex items-center space-x-3">
                        {isExpanded ? <ChevronDown size={20} className="text-slate-500"/> : <ChevronRight size={20} className="text-slate-500"/>}
@@ -190,14 +181,12 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                 {isExpanded && (
                     <div className="border-t border-slate-200">
-                        {/* Deliverables List */}
                         {grant.deliverables?.map((del, dIdx) => {
                             const dStats = getDeliverableStats(del);
                             const isDelExpanded = expandedDeliverables.has(del.id);
 
                             return (
                                 <div key={del.id} className="border-b border-slate-100 last:border-0">
-                                    {/* Level 2: Deliverable */}
                                     <div className="p-3 pl-10 flex items-center justify-between hover:bg-slate-50 cursor-pointer" onClick={() => toggleExpand(del.id, setExpandedDeliverables)}>
                                         <div className="flex items-center space-x-3">
                                             {isDelExpanded ? <ChevronDown size={16} className="text-slate-400"/> : <ChevronRight size={16} className="text-slate-400"/>}
@@ -213,7 +202,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                                     {isDelExpanded && (
                                         <div className="bg-slate-50/50 pl-20 pr-4 py-2">
-                                            {/* Level 3: Budgets */}
                                             {del.budgetCategories?.map((cat) => {
                                                 const cStats = getCategoryStats(cat.id, del.id);
                                                 const isCatExpanded = expandedCategories.has(cat.id);
@@ -232,7 +220,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                                             </div>
                                                         </div>
                                                         
-                                                        {/* Level 4: Expenditures List (Interactive) */}
                                                         {isCatExpanded && (
                                                             <div className="pl-6 mt-1 space-y-1">
                                                                 {catExpenditures.length === 0 && <div className="text-xs text-slate-400 italic">No expenditures yet.</div>}
@@ -320,12 +307,18 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
             </div>
         )}
 
-        {/* Receipt Image Modal (Overlay) */}
+        {/* Receipt/Attachment Viewer Modal */}
         {receiptImage && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={() => setReceiptImage(null)}>
-                <div className="relative max-w-5xl max-h-[90vh]">
+                <div className="relative w-full max-w-5xl h-[85vh] flex flex-col justify-center">
                      <button onClick={() => setReceiptImage(null)} className="absolute -top-10 right-0 text-white hover:text-red-400"><X size={32}/></button>
-                     <img src={receiptImage} alt="Receipt" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" />
+                     
+                     {/* FIX: Conditional rendering for PDF vs Image */}
+                     {receiptImage.startsWith('data:application/pdf') ? (
+                        <iframe src={receiptImage} className="w-full h-full bg-white rounded-lg shadow-2xl" title="Document Viewer" />
+                     ) : (
+                        <img src={receiptImage} alt="Document" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl mx-auto" />
+                     )}
                 </div>
             </div>
         )}
@@ -439,12 +432,16 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
         )}
       </div>
 
-      {/* FIXED: Moved Receipt Viewer Modal OUTSIDE the `if (!isEditing)` block so it works in both views */}
+      {/* SHARED RECEIPT VIEWER (FOR BOTH MODES) */}
       {receiptImage && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={() => setReceiptImage(null)}>
-                <div className="relative max-w-5xl max-h-[90vh]">
+                <div className="relative w-full max-w-5xl h-[85vh] flex flex-col justify-center">
                      <button onClick={() => setReceiptImage(null)} className="absolute -top-10 right-0 text-white hover:text-red-400"><X size={32}/></button>
-                     <img src={receiptImage} alt="Receipt" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" />
+                     {receiptImage.startsWith('data:application/pdf') ? (
+                        <iframe src={receiptImage} className="w-full h-full bg-white rounded-lg shadow-2xl" title="Document Viewer" />
+                     ) : (
+                        <img src={receiptImage} alt="Document" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl mx-auto" />
+                     )}
                 </div>
             </div>
       )}
