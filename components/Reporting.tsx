@@ -15,6 +15,9 @@ export const Reporting: React.FC = () => {
   // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Expenditure>>({});
+  
+  // Viewer State
+  const [viewingReceipt, setViewingReceipt] = useState<string | null>(null);
 
   useEffect(() => {
     const g = db.getGrants();
@@ -75,10 +78,16 @@ export const Reporting: React.FC = () => {
     }
   };
 
-  const openReceipt = (path?: string) => {
+  const openReceipt = async (path?: string) => {
     if(!path) return alert("No receipt attached.");
-    const win = window.open("");
-    if(win) win.document.write(`<img src="${path}" style="max-width:100%"/>`);
+    if ((window as any).electronAPI) {
+        try {
+           const base64 = await (window as any).electronAPI.readReceipt(path);
+           setViewingReceipt(base64);
+        } catch (e) {
+           alert("Could not load image. File may be missing or corrupt.");
+        }
+    }
   };
 
   const downloadCSV = () => {
@@ -242,6 +251,24 @@ export const Reporting: React.FC = () => {
                  </tbody>
                </table>
              </div>
+             
+             {/* Receipt Viewer Modal */}
+             {viewingReceipt && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setViewingReceipt(null)}>
+                    <div className="relative bg-white rounded-lg shadow-2xl max-w-4xl max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <button 
+                            onClick={() => setViewingReceipt(null)}
+                            className="absolute top-2 right-2 p-2 bg-black/50 text-white rounded-full hover:bg-red-600 transition-colors z-10"
+                        >
+                            <X size={20} />
+                        </button>
+                        <div className="overflow-auto max-h-[85vh] p-2">
+                             <img src={viewingReceipt} alt="Receipt" className="max-w-full h-auto object-contain" />
+                        </div>
+                    </div>
+                </div>
+             )}
+
            </div>
         </div>
       )}

@@ -149,7 +149,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                        {isExpanded ? <ChevronDown size={20} className="text-slate-500"/> : <ChevronRight size={20} className="text-slate-500"/>}
                        <div>
                            <h3 className="font-bold text-lg text-slate-800">{grant.name}</h3>
-                           <div className="text-xs text-slate-500">Award: ${grant.totalAward.toLocaleString()} • Spent: ${gStats.spent.toLocaleString()} • Remaining: ${gStats.remaining.toLocaleString()}</div>
+                           <div className="text-xs text-slate-500">Award: ${(grant.totalAward || 0).toLocaleString()} • Spent: ${(gStats.spent || 0).toLocaleString()} • Remaining: ${(gStats.remaining || 0).toLocaleString()}</div>
                        </div>
                    </div>
                    <button onClick={(e) => {e.stopPropagation(); handleEdit(grant)}} className="p-2 text-slate-400 hover:text-brand-600"><Edit2 size={18}/></button>
@@ -157,7 +157,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                 {isExpanded && (
                     <div className="border-t border-slate-200">
-                        {grant.deliverables.map((del, dIdx) => {
+                        {grant.deliverables?.map((del, dIdx) => {
                             const dStats = getDeliverableStats(del);
                             const isDelExpanded = expandedDeliverables.has(del.id);
 
@@ -171,14 +171,14 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                                     <span className="font-semibold text-sm text-slate-700">{del.sectionReference}: {del.description}</span>
                                                     <span className={`text-[10px] px-2 py-0.5 rounded-full ${del.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{del.status}</span>
                                                 </div>
-                                                <div className="text-xs text-slate-400">Allocated: ${del.allocatedValue.toLocaleString()} • Spent: ${dStats.spent.toLocaleString()}</div>
+                                                <div className="text-xs text-slate-400">Allocated: ${(del.allocatedValue || 0).toLocaleString()} • Spent: ${(dStats.spent || 0).toLocaleString()}</div>
                                             </div>
                                         </div>
                                     </div>
 
                                     {isDelExpanded && (
                                         <div className="bg-slate-50/50 pl-20 pr-4 py-2">
-                                            {del.budgetCategories.map((cat) => {
+                                            {del.budgetCategories?.map((cat) => {
                                                 const cStats = getCategoryStats(cat.id, del.id);
                                                 const isCatExpanded = expandedCategories.has(cat.id);
                                                 const catExpenditures = expenditures.filter(e => e.categoryId === cat.id && e.deliverableId === del.id);
@@ -191,20 +191,30 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                                                 <span className="font-medium text-slate-600">{cat.name}</span>
                                                             </div>
                                                             <div className="flex items-center space-x-4">
-                                                                <span className="text-xs text-slate-400 font-mono">${cStats.spent.toLocaleString()} / ${cat.allocation.toLocaleString()}</span>
+                                                                <span className="text-xs text-slate-400 font-mono">${(cStats.spent || 0).toLocaleString()} / {(cat.allocation || 0).toLocaleString()}</span>
                                                                 <button onClick={(e) => { e.stopPropagation(); jumpToaddExpenditure(grant.id, del.id, cat.id); }} className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded hover:bg-brand-200">+ Exp</button>
                                                             </div>
                                                         </div>
                                                         
                                                         {isCatExpanded && (
-                                                            <div className="pl-6 mt-1 space-y-1">
-                                                                {catExpenditures.length === 0 && <div className="text-xs text-slate-400 italic">No expenditures yet.</div>}
-                                                                {catExpenditures.map(e => (
-                                                                    <div key={e.id} className="flex justify-between text-xs text-slate-500 border-l-2 border-slate-200 pl-2">
-                                                                        <span>{e.date} - {e.vendor}</span>
-                                                                        <span className="font-mono">${e.amount.toFixed(2)}</span>
-                                                                    </div>
-                                                                ))}
+                                                            <div className="pl-6 mt-1 overflow-x-auto">
+                                                                <table className="w-full text-xs text-slate-500">
+                                                                    <thead className="text-slate-400 border-b border-slate-200 text-left">
+                                                                        <tr><th>Date</th><th>Vendor</th><th>Purchaser</th><th>Justification</th><th className="text-right">Amount</th></tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {catExpenditures.map(e => (
+                                                                            <tr key={e.id} className="border-b border-slate-200 hover:bg-slate-100">
+                                                                                <td className="py-1">{e.date}</td>
+                                                                                <td>{e.vendor}</td>
+                                                                                <td>{e.purchaser || '-'}</td>
+                                                                                <td className="truncate max-w-[150px]" title={e.justification}>{e.justification || '-'}</td>
+                                                                                <td className="text-right font-mono">${e.amount.toFixed(2)}</td>
+                                                                            </tr>
+                                                                        ))}
+                                                                        {catExpenditures.length === 0 && <tr><td colSpan={5} className="py-2 italic">No expenditures recorded.</td></tr>}
+                                                                    </tbody>
+                                                                </table>
                                                             </div>
                                                         )}
                                                     </div>
@@ -229,6 +239,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     );
   }
 
+  // --- EDIT VIEW (Details, Deliverables, Reports Tabs) ---
   return (
     <div className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-[calc(100vh-8rem)]">
       <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
@@ -260,6 +271,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
               <HighContrastInput label="End Date" type="date" value={currentGrant.endDate || ''} onChange={e => setCurrentGrant({...currentGrant, endDate: e.target.value})} />
             </div>
             
+            {/* Attachments Section */}
             <div className="pt-4 border-t border-slate-200">
                 <h4 className="font-bold text-slate-700 mb-2 flex items-center"><Paperclip size={18} className="mr-2"/> Attachments</h4>
                 <div className="space-y-2 mb-3">
@@ -275,6 +287,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
           </div>
         )}
 
+        {/* ... Deliverables and Reports Tabs (same as previous response, just ensuring safety) ... */}
         {activeTab === 'deliverables' && (
           <div className="space-y-6">
             {currentGrant.deliverables?.map((del, dIdx) => (
@@ -288,7 +301,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                   </div>
                   <div className="p-4 bg-slate-50/50">
                     <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Budget Categories</h5>
-                    {del.budgetCategories.map((cat, cIdx) => (
+                    {del.budgetCategories?.map((cat, cIdx) => (
                       <div key={cat.id} className="flex gap-2 mb-2 items-center">
                         <ChevronRight size={16} className="text-slate-400" />
                         <div className="flex-1"><HighContrastInput placeholder="Category Name" value={cat.name} onChange={e => updateCategory(dIdx, cIdx, 'name', e.target.value)} /></div>

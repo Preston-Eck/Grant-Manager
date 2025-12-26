@@ -1,6 +1,6 @@
-const { app, BrowserWindow, ipcMain } = require('electron'); // Added ipcMain
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const fs = require('fs'); // Added fs
+const fs = require('fs');
 
 // Prevent garbage collection
 let mainWindow;
@@ -10,18 +10,21 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'), // Ensure this is linked
+      nodeIntegration: false, // Security best practice
+      contextIsolation: true, // Security best practice
+      preload: path.join(__dirname, 'preload.js'), // Optional
     },
     icon: path.join(__dirname, '../public/icon.ico') 
   });
 
+  // LOGIC FIX: Check if the app is packaged (Production) or not (Development)
   if (!app.isPackaged) {
+    // DEVELOPMENT: Load from the local Vite server
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools(); // Open debug console
     console.log("Loading in Development Mode: http://localhost:5173");
   } else {
+    // PRODUCTION: Load the built file
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     console.log("Loading in Production Mode");
   }
@@ -52,6 +55,25 @@ app.whenReady().then(() => {
     } catch (error) {
       console.error("Failed to save receipt:", error);
       throw error;
+    }
+  });
+
+  // IPC Handler to READ files (Fixes the "Not allowed to load local resource" error)
+  ipcMain.handle('read-receipt', async (event, filepath) => {
+    try {
+        const bitmap = await fs.promises.readFile(filepath);
+        const base64 = Buffer.from(bitmap).toString('base64');
+        
+        // Simple extension check to set correct mime type
+        const ext = path.extname(filepath).toLowerCase();
+        let mime = 'image/png';
+        if(ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+        if(ext === '.webp') mime = 'image/webp';
+        
+        return `data:${mime};base64,${base64}`;
+    } catch (e) {
+        console.error("Failed to read receipt:", e);
+        throw e;
     }
   });
 
