@@ -6,23 +6,18 @@ const ai = new GoogleGenAI({ apiKey });
 export const parseReceiptImage = async (base64Image: string): Promise<string> => {
   if (!apiKey) throw new Error("API Key missing");
 
-  // 1. Dynamic Mime Type Detection
   let mimeType = 'image/jpeg';
-  if (base64Image.startsWith('data:image/png;')) {
-    mimeType = 'image/png';
-  } else if (base64Image.startsWith('data:image/webp;')) {
-    mimeType = 'image/webp';
-  }
+  if (base64Image.startsWith('data:image/png;')) mimeType = 'image/png';
+  if (base64Image.startsWith('data:image/webp;')) mimeType = 'image/webp';
 
   const base64Data = base64Image.split(',')[1] || base64Image;
 
   try {
-    // FIX: Reverted to standard model name
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash', 
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
-          { inlineData: { mimeType: mimeType, data: base64Data } },
+          { inlineData: { mimeType, data: base64Data } },
           { text: `Extract data. Return ONLY valid JSON. Keys: "vendor" (string), "date" (YYYY-MM-DD), "amount" (number). No markdown.` }
         ]
       }

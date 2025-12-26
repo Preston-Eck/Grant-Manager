@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, GrantStatus, Deliverable, ComplianceReport, BudgetCategory, Expenditure } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Paperclip, FileText, X, Eye, DollarSign, User, FileDigit } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Paperclip, FileText, X, Eye, User, FileDigit } from 'lucide-react';
 
 interface GrantManagerProps {
   onNavigate?: (tab: string, data?: any) => void;
@@ -22,7 +22,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const [expandedDeliverables, setExpandedDeliverables] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  // Expenditure Detail Modal State
+  // Detail Modal State
   const [selectedExpenditure, setSelectedExpenditure] = useState<Expenditure | null>(null);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
 
@@ -79,16 +79,26 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
      input.click();
   };
 
+  // NEW: Delete Attachment Logic
+  const handleDeleteAttachment = (index: number) => {
+      if (window.confirm("Are you sure you want to delete this attachment?")) {
+          const newAttachments = [...(currentGrant.attachments || [])];
+          newAttachments.splice(index, 1);
+          setCurrentGrant({ ...currentGrant, attachments: newAttachments });
+      }
+  };
+
   const handleViewReceipt = async (path: string) => {
     if ((window as any).electronAPI) {
         try {
             const base64 = await (window as any).electronAPI.readReceipt(path);
             setReceiptImage(base64);
         } catch (e) {
-            alert("Error loading receipt file. It may have been moved or deleted.");
+            console.error(e);
+            alert("Error loading file. It may have been moved or deleted.");
         }
     } else {
-        alert("Receipt viewing is only available in the desktop app.");
+        alert("File viewing is only available in the desktop app.");
     }
   };
 
@@ -129,7 +139,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       if(onNavigate) onNavigate('ingestion', { action: 'prefill', grantId: gId, deliverableId: dId, categoryId: cId });
   };
 
-  // --- EDIT MODE SUB-FUNCTIONS ---
   const updateDeliverable = (idx:number, field: keyof Deliverable, val: any) => {
       const d = [...(currentGrant.deliverables || [])];
       d[idx] = { ...d[idx], [field]: val };
@@ -158,7 +167,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
           </button>
         </div>
 
-        {/* Tree View */}
         <div className="space-y-4">
           {grants.map(grant => {
             const gStats = getGrantStats(grant);
@@ -166,7 +174,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
             return (
               <div key={grant.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                {/* Level 1: Grant */}
                 <div className="p-4 flex items-center justify-between bg-slate-50 cursor-pointer hover:bg-slate-100" onClick={() => toggleExpand(grant.id, setExpandedGrants)}>
                    <div className="flex items-center space-x-3">
                        {isExpanded ? <ChevronDown size={20} className="text-slate-500"/> : <ChevronRight size={20} className="text-slate-500"/>}
@@ -180,14 +187,12 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                 {isExpanded && (
                     <div className="border-t border-slate-200">
-                        {/* Deliverables List */}
                         {grant.deliverables?.map((del, dIdx) => {
                             const dStats = getDeliverableStats(del);
                             const isDelExpanded = expandedDeliverables.has(del.id);
 
                             return (
                                 <div key={del.id} className="border-b border-slate-100 last:border-0">
-                                    {/* Level 2: Deliverable */}
                                     <div className="p-3 pl-10 flex items-center justify-between hover:bg-slate-50 cursor-pointer" onClick={() => toggleExpand(del.id, setExpandedDeliverables)}>
                                         <div className="flex items-center space-x-3">
                                             {isDelExpanded ? <ChevronDown size={16} className="text-slate-400"/> : <ChevronRight size={16} className="text-slate-400"/>}
@@ -203,7 +208,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                                     {isDelExpanded && (
                                         <div className="bg-slate-50/50 pl-20 pr-4 py-2">
-                                            {/* Level 3: Budgets */}
                                             {del.budgetCategories?.map((cat) => {
                                                 const cStats = getCategoryStats(cat.id, del.id);
                                                 const isCatExpanded = expandedCategories.has(cat.id);
@@ -222,7 +226,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                                             </div>
                                                         </div>
                                                         
-                                                        {/* Level 4: Expenditures List (Interactive) */}
                                                         {isCatExpanded && (
                                                             <div className="pl-6 mt-1 space-y-1">
                                                                 {catExpenditures.length === 0 && <div className="text-xs text-slate-400 italic">No expenditures yet.</div>}
@@ -359,9 +362,21 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                 <h4 className="font-bold text-slate-700 mb-2 flex items-center"><Paperclip size={18} className="mr-2"/> Attachments</h4>
                 <div className="space-y-2 mb-3">
                     {currentGrant.attachments?.map((path, idx) => (
-                        <div key={idx} className="flex items-center text-sm text-brand-600 bg-white p-2 border rounded">
-                            <FileText size={16} className="mr-2"/>
-                            <span className="truncate flex-1">{path.split(/[/\\]/).pop()}</span>
+                        <div key={idx} className="flex items-center justify-between text-sm bg-white p-2 border rounded hover:bg-slate-50">
+                            <button 
+                                onClick={() => handleViewReceipt(path)}
+                                className="flex items-center text-brand-600 hover:underline truncate flex-1 text-left"
+                            >
+                                <FileText size={16} className="mr-2 flex-shrink-0"/>
+                                <span className="truncate">{path.split(/[/\\]/).pop()}</span>
+                            </button>
+                            <button 
+                                onClick={() => handleDeleteAttachment(idx)}
+                                className="ml-2 text-slate-400 hover:text-red-500"
+                                title="Delete Attachment"
+                            >
+                                <Trash2 size={16} />
+                            </button>
                         </div>
                     ))}
                 </div>
@@ -370,7 +385,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
           </div>
         )}
 
-        {/* ... Deliverables and Reports Tabs (Same as before) ... */}
+        {/* Deliverables and Reports tabs remain the same as previous correct version */}
         {activeTab === 'deliverables' && (
           <div className="space-y-6">
             {currentGrant.deliverables?.map((del, dIdx) => (
