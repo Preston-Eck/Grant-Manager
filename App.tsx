@@ -18,18 +18,24 @@ const GrantsPlaceholder = () => (
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
+const [sharedData, setSharedData] = useState<any>(null);
+
+  const handleNavigate = (tab: string, data?: any) => {
+    if (data) setSharedData(data);
+    setActiveTab(tab);
+  };
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard onNavigate={setActiveTab} />;
-      case 'ingestion': return <IngestionQueue />;
+      case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;
+      case 'ingestion': return <IngestionQueue onNavigate={handleNavigate} />; // Pass handler here
       case 'wizard': return <GrantWizard />;
       case 'reporting': return <Reporting />;
-      case 'communication': return <Communication />;
+      case 'communication': return <Communication initialData={sharedData} />;
       case 'feedback': return <Feedback />;
       case 'grants': return <GrantManager />;
       case 'settings': return <DataManagement />;
-      default: return <Dashboard onNavigate={setActiveTab} />;
+      default: return <Dashboard onNavigate={handleNavigate} />;
     }
   };
 

@@ -1,4 +1,3 @@
-// electron/main.cjs
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
@@ -12,20 +11,21 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false, // Security best practice
       contextIsolation: true, // Security best practice
-      preload: path.join(__dirname, 'preload.js'), // Optional: if you need IPC later
+      preload: path.join(__dirname, 'preload.js'), // Optional
     },
-    // Icon for the window taskbar (ensure you have an icon.ico in /public or remove this line)
     icon: path.join(__dirname, '../public/icon.ico') 
   });
 
-  // Load the app
-  if (process.env.NODE_ENV === 'development') {
-    // In dev, load from the Vite dev server
+  // LOGIC FIX: Check if the app is packaged (Production) or not (Development)
+  if (!app.isPackaged) {
+    // DEVELOPMENT: Load from the local Vite server
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools(); // Open debug console
+    console.log("Loading in Development Mode: http://localhost:5173");
   } else {
-    // In production, load the built HTML file
+    // PRODUCTION: Load the built file
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    console.log("Loading in Production Mode");
   }
 
   mainWindow.on('closed', () => {

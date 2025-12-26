@@ -5,6 +5,12 @@ import { EmailTemplate, Grant } from '../types';
 import { HighContrastSelect, HighContrastInput, HighContrastTextArea } from './ui/Input';
 import { Copy, Check, Plus, Trash2, Edit2, Save, X, Sparkles, Loader2 } from 'lucide-react';
 
+interface CommunicationProps {
+  initialData?: any;
+}
+
+export const Communication: React.FC<CommunicationProps> = ({ initialData }) => {
+
 export const Communication: React.FC = () => {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
@@ -25,6 +31,23 @@ export const Communication: React.FC = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [showAiInput, setShowAiInput] = useState(false);
 
+  useEffect(() => {
+    if (initialData && initialData.action === 'draft_rejection') {
+      const template = templates.find(t => t.id === initialData.templateId);
+      if (template) {
+        setSelectedTemplate(template);
+        
+        // Auto-fill the preview with the rejected receipt's details
+        let filledBody = template.body
+          .replace(/{{Vendor}}/g, initialData.vendor)
+          .replace(/{{Date}}/g, initialData.date)
+          .replace(/{{GrantName}}/g, "[GRANT NAME]");
+          
+        setPreview(filledBody);
+      }
+    }
+  }, [initialData, templates]);
+  
   useEffect(() => {
     refreshData();
   }, []);

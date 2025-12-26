@@ -5,6 +5,32 @@ import { Grant, Transaction, IngestionItem } from '../types';
 import { HighContrastInput, HighContrastSelect } from './ui/Input';
 import { Loader2, Check, X, Upload } from 'lucide-react';
 
+interface IngestionQueueProps {
+  onNavigate?: (tab: string, data?: any) => void;
+}
+
+export const IngestionQueue: React.FC<IngestionQueueProps> = ({ onNavigate }) => {
+  // ... existing state ...
+
+  const handleReject = (item: IngestionItem) => {
+    const vendor = item.parsedData?.vendor || "Unknown Vendor";
+    const date = item.parsedData?.date || "Unknown Date";
+    
+    if (confirm(`Reject receipt from ${vendor}? This will open a correction email draft.`)) {
+      setQueue(prev => prev.filter(q => q.id !== item.id));
+      
+      // Navigate to Communication tab with data
+      if (onNavigate) {
+        onNavigate('communication', {
+          action: 'draft_rejection',
+          vendor: vendor,
+          date: date,
+          templateId: 't-2' // The ID of your "Receipt Correction" template in dbService
+        });
+      }
+    }
+  };
+
 export const IngestionQueue: React.FC = () => {
   const [queue, setQueue] = useState<IngestionItem[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
@@ -122,7 +148,7 @@ export const IngestionQueue: React.FC = () => {
             item={item} 
             grants={grants} 
             onApprove={handleApprove} 
-            onReject={handleReject} 
+            onReject={() => handleReject(item)} 
           />
         ))}
       </div>
