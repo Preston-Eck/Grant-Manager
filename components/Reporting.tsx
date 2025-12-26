@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, Expenditure } from '../types';
-import { HighContrastSelect, HighContrastInput } from './ui/Input';
-import { Download, FileText, Edit2, Save, X } from 'lucide-react';
+import { HighContrastSelect, HighContrastInput, HighContrastTextArea } from './ui/Input';
+import { Download, FileText, Edit2, Save, X, Eye } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#e2e8f0'];
@@ -11,6 +11,8 @@ export const Reporting: React.FC = () => {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [selectedGrantId, setSelectedGrantId] = useState<string>('');
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
+  
+  // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Expenditure>>({});
 
@@ -20,142 +22,201 @@ export const Reporting: React.FC = () => {
     if (g.length > 0) setSelectedGrantId(g[0].id);
   }, []);
 
+  const refreshData = () => {
+    if (selectedGrantId) {
+      setExpenditures(db.getExpenditures(selectedGrantId));
+    }
+  };
+
   useEffect(() => {
-    if (selectedGrantId) setExpenditures(db.getExpenditures(selectedGrantId));
+    refreshData();
   }, [selectedGrantId]);
 
   const selectedGrant = grants.find(g => g.id === selectedGrantId);
 
-  // Helper to get names
-  const getDeliverableName = (id: string) => selectedGrant?.deliverables.find(d => d.id === id)?.description || 'Unknown';
-  const getCategoryName = (dId: string, cId: string) => selectedGrant?.deliverables.find(d => d.id === dId)?.budgetCategories.find(c => c.id === cId)?.name || 'Unknown';
+  // Helper to look up names from IDs
+  const getDeliverableName = (id: string) => selectedGrant?.deliverables.find(d => d.id === id)?.description || 'Unassigned';
+  const getCategoryName = (dId: string, cId: string) => selectedGrant?.deliverables.find(d => d.id === dId)?.budgetCategories.find(c => c.id === cId)?.name || 'Unassigned';
 
-  // Chart Data: Deliverable Balance Monitoring
-  const deliverableData = (selectedGrant?.deliverables || []).map(d => {
-    const spent = expenditures.filter(e => e.deliverableId === d.id).reduce((sum, e) => sum + e.amount, 0);
-    return { name: d.sectionReference, value: spent, total: d.allocatedValue };
-  });
+  // Chart Logic
+  const expendituresByCategory = expenditures.reduce((acc, t) => {
+    const catName = getCategoryName(t.deliverableId, t.categoryId);
+    acc[catName] = (acc[catName] || 0) + t.amount;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const chartData = Object.keys(expendituresByCategory).map(key => ({
+    name: key,
+    value: expendituresByCategory[key]
+  }));
+  
+  // Calculate Remaining
+  if (selectedGrant) {
+    const totalSpent = expenditures.reduce((sum, t) => sum + t.amount, 0);
+    const remaining = Math.max(0, selectedGrant.totalAward - totalSpent);
+    if(remaining > 0) chartData.push({ name: 'Remaining', value: remaining });
+  }
+
+  const startEdit = (t: Expenditure) => {
+    setEditingId(t.id);
+    setEditForm({...t});
+  };
 
   const saveEdit = () => {
     if (!editForm.id) return;
     const all = db.getExpenditures();
     const index = all.findIndex(t => t.id === editForm.id);
+    
     if (index !== -1) {
        all[index] = { ...all[index], ...editForm } as Expenditure;
        localStorage.setItem('eckerdt_expenditures', JSON.stringify(all));
-       setExpenditures(db.getExpenditures(selectedGrantId));
+       refreshData();
        setEditingId(null);
     }
   };
 
+  const openReceipt = (path?: string) => {
+    if(!path) return alert("No receipt attached.");
+    // Display base64 or file path in new window
+    const win = window.open("");
+    if(win) win.document.write(`<img src="${path}" style="max-width:100%"/>`);
+  };
+
   const downloadCSV = () => {
     if (!expenditures.length) return;
-    const headers = ['Date', 'Vendor', 'Deliverable', 'Category', 'Justification', 'Amount'];
+    const headers = ['Date', 'Vendor', 'Deliverable', 'Category', 'Purchaser', 'Justification', 'Notes', 'Amount'];
     const rows = expenditures.map(t => [
-      t.date, t.vendor, getDeliverableName(t.deliverableId), getCategoryName(t.deliverableId, t.categoryId), t.justification, t.amount.toFixed(2)
+      t.date,
+      `"${t.vendor}"`, 
+      `"${getDeliverableName(t.deliverableId)}"`,
+      `"${getCategoryName(t.deliverableId, t.categoryId)}"`,
+      `"${t.purchaser || ''}"`,
+      `"${t.justification || ''}"`,
+      `"${t.notes || ''}"`,
+      t.amount.toFixed(2)
     ]);
+    
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `expenditures_${selectedGrantId}.csv`;
+    link.download = `grant_report_${selectedGrantId}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 print:p-0">
+      <div className="flex justify-between items-center print:hidden">
         <h2 className="text-2xl font-bold text-slate-900">Grant Monitoring</h2>
-        <div className="w-64"><HighContrastSelect options={grants.map(g => ({ value: g.id, label: g.name }))} value={selectedGrantId} onChange={(e) => setSelectedGrantId(e.target.value)} /></div>
+        <div className="w-64">
+           <HighContrastSelect 
+            options={grants.map(g => ({ value: g.id, label: g.name }))}
+            value={selectedGrantId}
+            onChange={(e) => setSelectedGrantId(e.target.value)}
+          />
+        </div>
       </div>
 
       {selectedGrant && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-               <h3 className="font-bold text-slate-700 mb-4">Budget vs. Actuals (By Deliverable)</h3>
-               <div className="h-64">
+        <div className="space-y-8">
+           {/* Visuals */}
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-1 bg-white p-4 rounded-xl shadow-sm border border-slate-200 h-64">
+                 <h4 className="font-bold text-slate-700 mb-2 text-center">Budget Utilization</h4>
                  <ResponsiveContainer width="100%" height="100%">
                    <PieChart>
-                     <Pie data={deliverableData} cx="50%" cy="50%" label={({name, value}) => `${name}: $${value}`} outerRadius={80} fill="#8884d8" dataKey="value">
-                       {deliverableData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                     <Pie data={chartData} cx="50%" cy="50%" innerRadius={40} outerRadius={80} paddingAngle={5} dataKey="value">
+                       {chartData.map((entry, index) => (
+                         <Cell key={`cell-${index}`} fill={entry.name === 'Remaining' ? '#e2e8f0' : COLORS[index % (COLORS.length - 1)]} />
+                       ))}
                      </Pie>
                      <Tooltip />
+                     <Legend verticalAlign="bottom" height={36}/>
                    </PieChart>
                  </ResponsiveContainer>
-               </div>
-             </div>
-             
-             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 overflow-y-auto h-80">
-               <h3 className="font-bold text-slate-700 mb-4">Deliverable Status</h3>
-               {selectedGrant.deliverables.map(d => {
-                 const spent = expenditures.filter(e => e.deliverableId === d.id).reduce((sum, e) => sum + e.amount, 0);
-                 const percent = Math.min(100, (spent / d.allocatedValue) * 100);
-                 return (
-                   <div key={d.id} className="mb-4">
-                     <div className="flex justify-between text-sm mb-1">
-                       <span className="font-medium">{d.sectionReference}</span>
-                       <span className="text-slate-500">${spent.toLocaleString()} / ${d.allocatedValue.toLocaleString()}</span>
-                     </div>
-                     <div className="w-full bg-slate-100 rounded-full h-2">
-                       <div className="bg-brand-600 h-2 rounded-full" style={{width: `${percent}%`}}></div>
-                     </div>
-                   </div>
-                 )
-               })}
-             </div>
-          </div>
+              </div>
+              <div className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center space-y-4">
+                 <div className="flex justify-between border-b border-slate-100 pb-2">
+                    <span className="text-slate-500">Total Award</span>
+                    <span className="font-mono font-bold text-lg">${selectedGrant.totalAward.toLocaleString()}</span>
+                 </div>
+                 <div className="flex justify-between border-b border-slate-100 pb-2">
+                    <span className="text-slate-500">Cumulative Expenditures</span>
+                    <span className="font-mono font-bold text-lg text-brand-600">${expenditures.reduce((s,t)=>s+t.amount,0).toLocaleString()}</span>
+                 </div>
+                 <div className="flex justify-between">
+                    <span className="text-slate-500">Unobligated Balance</span>
+                    <span className="font-mono font-bold text-lg text-emerald-600">${(selectedGrant.totalAward - expenditures.reduce((s,t)=>s+t.amount,0)).toLocaleString()}</span>
+                 </div>
+              </div>
+           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
-            <div className="flex justify-between mb-4">
-              <h3 className="font-bold text-slate-800">Expenditure Ledger</h3>
-              <button onClick={downloadCSV} className="text-sm bg-slate-100 px-3 py-2 rounded hover:bg-slate-200 flex items-center"><Download size={14} className="mr-2"/> Export CSV</button>
-            </div>
-            <table className="w-full text-sm text-left border-collapse min-w-[900px]">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Vendor</th>
-                  <th className="p-3">Deliverable</th>
-                  <th className="p-3">Category</th>
-                  <th className="p-3">Justification</th>
-                  <th className="p-3 text-right">Amount</th>
-                  <th className="p-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {expenditures.map(t => (
-                  <tr key={t.id} className="border-b border-slate-100">
-                    {editingId === t.id ? (
-                        <>
-                          <td className="p-2"><HighContrastInput type="date" value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} /></td>
-                          <td className="p-2"><HighContrastInput value={editForm.vendor} onChange={e => setEditForm({...editForm, vendor: e.target.value})} /></td>
-                          <td className="p-2 text-slate-400 italic">Locked</td>
-                          <td className="p-2 text-slate-400 italic">Locked</td>
-                          <td className="p-2"><HighContrastInput value={editForm.justification} onChange={e => setEditForm({...editForm, justification: e.target.value})} /></td>
-                          <td className="p-2"><HighContrastInput type="number" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})} /></td>
-                          <td className="p-2"><button onClick={saveEdit}><Save size={16} className="text-green-600"/></button></td>
-                        </>
-                    ) : (
-                        <>
-                          <td className="p-3">{t.date}</td>
-                          <td className="p-3 font-medium">{t.vendor}</td>
-                          <td className="p-3 truncate max-w-[150px]" title={getDeliverableName(t.deliverableId)}>{getDeliverableName(t.deliverableId)}</td>
-                          <td className="p-3">{getCategoryName(t.deliverableId, t.categoryId)}</td>
-                          <td className="p-3 truncate max-w-[200px]" title={t.justification}>{t.justification}</td>
-                          <td className="p-3 text-right font-mono">${t.amount.toLocaleString()}</td>
-                          <td className="p-3"><button onClick={() => {setEditingId(t.id); setEditForm(t)}}><Edit2 size={16} className="text-slate-400 hover:text-brand-600"/></button></td>
-                        </>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+           {/* Ledger */}
+           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+             <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+               <h3 className="font-bold text-slate-800">Expenditure Ledger</h3>
+               <button onClick={downloadCSV} className="text-sm bg-white border border-slate-300 px-3 py-1 rounded hover:bg-slate-50 flex items-center"><Download size={14} className="mr-2"/> CSV</button>
+             </div>
+             <div className="overflow-x-auto">
+               <table className="w-full text-sm text-left border-collapse min-w-[1000px]">
+                 <thead className="bg-slate-100 text-slate-600 uppercase text-xs">
+                   <tr>
+                     <th className="p-3">Date</th>
+                     <th className="p-3">Vendor</th>
+                     <th className="p-3">Purchaser</th>
+                     <th className="p-3 w-48">Justification</th>
+                     <th className="p-3">Deliverable/Cat</th>
+                     <th className="p-3 text-right">Amount</th>
+                     <th className="p-3 text-center">Receipt</th>
+                     <th className="p-3 text-center">Actions</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {expenditures.map(t => (
+                     <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
+                       {editingId === t.id ? (
+                         <>
+                           <td className="p-2"><HighContrastInput type="date" value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} /></td>
+                           <td className="p-2"><HighContrastInput value={editForm.vendor} onChange={e => setEditForm({...editForm, vendor: e.target.value})} /></td>
+                           <td className="p-2"><HighContrastInput value={editForm.purchaser} onChange={e => setEditForm({...editForm, purchaser: e.target.value})} /></td>
+                           <td className="p-2"><HighContrastTextArea rows={2} value={editForm.justification} onChange={e => setEditForm({...editForm, justification: e.target.value})} /></td>
+                           <td className="p-2 text-xs text-slate-400">Locked for Audit</td>
+                           <td className="p-2"><HighContrastInput type="number" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})} /></td>
+                           <td className="p-2 text-center">-</td>
+                           <td className="p-2 flex justify-center space-x-1">
+                              <button onClick={saveEdit} className="p-1 text-green-600 hover:bg-green-50 rounded"><Save size={16}/></button>
+                              <button onClick={() => setEditingId(null)} className="p-1 text-red-600 hover:bg-red-50 rounded"><X size={16}/></button>
+                           </td>
+                         </>
+                       ) : (
+                         <>
+                           <td className="p-3">{t.date}</td>
+                           <td className="p-3 font-medium">{t.vendor}</td>
+                           <td className="p-3">{t.purchaser || '-'}</td>
+                           <td className="p-3 text-xs max-w-[200px] truncate" title={t.justification}>{t.justification || '-'}</td>
+                           <td className="p-3 text-xs">
+                             <div className="font-semibold">{getDeliverableName(t.deliverableId)}</div>
+                             <div className="text-slate-500">{getCategoryName(t.deliverableId, t.categoryId)}</div>
+                           </td>
+                           <td className="p-3 text-right font-mono">${t.amount.toFixed(2)}</td>
+                           <td className="p-3 text-center">
+                             {t.receiptUrl && <button onClick={() => openReceipt(t.receiptUrl)} className="text-brand-600 hover:text-brand-800"><FileText size={16}/></button>}
+                           </td>
+                           <td className="p-3 text-center">
+                             <button onClick={() => startEdit(t)} className="text-slate-400 hover:text-brand-600"><Edit2 size={16}/></button>
+                           </td>
+                         </>
+                       )}
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+           </div>
+        </div>
       )}
     </div>
   );
