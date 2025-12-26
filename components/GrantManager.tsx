@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, GrantStatus, Deliverable, ComplianceReport, BudgetCategory, Expenditure } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-// FIX: Added 'X' to imports
-import { Plus, Edit2, Trash2, Save, Calendar, ChevronRight, ChevronDown, Paperclip, FileText, CheckCircle, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Paperclip, FileText, X, Eye, DollarSign, User, FileDigit } from 'lucide-react';
 
 interface GrantManagerProps {
   onNavigate?: (tab: string, data?: any) => void;
@@ -13,13 +12,19 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   
+  // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
   const [currentGrant, setCurrentGrant] = useState<Partial<Grant>>({});
   const [activeTab, setActiveTab] = useState<'details' | 'deliverables' | 'reports'>('details');
 
+  // Tree View State
   const [expandedGrants, setExpandedGrants] = useState<Set<string>>(new Set());
   const [expandedDeliverables, setExpandedDeliverables] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  // Expenditure Detail Modal State
+  const [selectedExpenditure, setSelectedExpenditure] = useState<Expenditure | null>(null);
+  const [receiptImage, setReceiptImage] = useState<string | null>(null);
 
   useEffect(() => { refreshData(); }, []);
   const refreshData = () => { 
@@ -27,7 +32,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       setExpenditures(db.getExpenditures());
   };
 
-  // FIX: Properly typed the 'set' parameter so 'prev' is inferred correctly
   const toggleExpand = (id: string, set: React.Dispatch<React.SetStateAction<Set<string>>>) => {
     set(prev => {
         const next = new Set(prev);
@@ -36,6 +40,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     });
   };
 
+  // --- CRUD Handlers ---
   const handleAddNew = () => {
     setCurrentGrant({ id: crypto.randomUUID(), status: GrantStatus.Active, totalAward: 0, deliverables: [], reports: [], attachments: [] });
     setIsEditing(true);
@@ -74,6 +79,20 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
      input.click();
   };
 
+  const handleViewReceipt = async (path: string) => {
+    if ((window as any).electronAPI) {
+        try {
+            const base64 = await (window as any).electronAPI.readReceipt(path);
+            setReceiptImage(base64);
+        } catch (e) {
+            alert("Error loading receipt file. It may have been moved or deleted.");
+        }
+    } else {
+        alert("Receipt viewing is only available in the desktop app.");
+    }
+  };
+
+  // --- Calculations for Tree View ---
   const getGrantStats = (g: Grant) => {
       const spent = expenditures.filter(e => e.grantId === g.id).reduce((s, e) => s + e.amount, 0);
       return { spent, remaining: (g.totalAward || 0) - spent };
@@ -89,6 +108,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       return { spent };
   };
 
+  // --- Helper to add new items in Tree View ---
   const quickAddDeliverable = (g: Grant) => {
       const newDel: Deliverable = { id: crypto.randomUUID(), sectionReference: 'New Del', description: '', allocatedValue: 0, dueDate: '', status: 'Pending', budgetCategories: [] };
       g.deliverables.push(newDel);
@@ -109,6 +129,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       if(onNavigate) onNavigate('ingestion', { action: 'prefill', grantId: gId, deliverableId: dId, categoryId: cId });
   };
 
+  // --- EDIT MODE SUB-FUNCTIONS ---
   const updateDeliverable = (idx:number, field: keyof Deliverable, val: any) => {
       const d = [...(currentGrant.deliverables || [])];
       d[idx] = { ...d[idx], [field]: val };
@@ -137,6 +158,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
           </button>
         </div>
 
+        {/* Tree View */}
         <div className="space-y-4">
           {grants.map(grant => {
             const gStats = getGrantStats(grant);
@@ -144,6 +166,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
             return (
               <div key={grant.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                {/* Level 1: Grant */}
                 <div className="p-4 flex items-center justify-between bg-slate-50 cursor-pointer hover:bg-slate-100" onClick={() => toggleExpand(grant.id, setExpandedGrants)}>
                    <div className="flex items-center space-x-3">
                        {isExpanded ? <ChevronDown size={20} className="text-slate-500"/> : <ChevronRight size={20} className="text-slate-500"/>}
@@ -157,12 +180,14 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                 {isExpanded && (
                     <div className="border-t border-slate-200">
+                        {/* Deliverables List */}
                         {grant.deliverables?.map((del, dIdx) => {
                             const dStats = getDeliverableStats(del);
                             const isDelExpanded = expandedDeliverables.has(del.id);
 
                             return (
                                 <div key={del.id} className="border-b border-slate-100 last:border-0">
+                                    {/* Level 2: Deliverable */}
                                     <div className="p-3 pl-10 flex items-center justify-between hover:bg-slate-50 cursor-pointer" onClick={() => toggleExpand(del.id, setExpandedDeliverables)}>
                                         <div className="flex items-center space-x-3">
                                             {isDelExpanded ? <ChevronDown size={16} className="text-slate-400"/> : <ChevronRight size={16} className="text-slate-400"/>}
@@ -178,6 +203,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                                     {isDelExpanded && (
                                         <div className="bg-slate-50/50 pl-20 pr-4 py-2">
+                                            {/* Level 3: Budgets */}
                                             {del.budgetCategories?.map((cat) => {
                                                 const cStats = getCategoryStats(cat.id, del.id);
                                                 const isCatExpanded = expandedCategories.has(cat.id);
@@ -196,25 +222,20 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                                             </div>
                                                         </div>
                                                         
+                                                        {/* Level 4: Expenditures List (Interactive) */}
                                                         {isCatExpanded && (
-                                                            <div className="pl-6 mt-1 overflow-x-auto">
-                                                                <table className="w-full text-xs text-slate-500">
-                                                                    <thead className="text-slate-400 border-b border-slate-200 text-left">
-                                                                        <tr><th>Date</th><th>Vendor</th><th>Purchaser</th><th>Justification</th><th className="text-right">Amount</th></tr>
-                                                                    </thead>
-                                                                    <tbody>
-                                                                        {catExpenditures.map(e => (
-                                                                            <tr key={e.id} className="border-b border-slate-200 hover:bg-slate-100">
-                                                                                <td className="py-1">{e.date}</td>
-                                                                                <td>{e.vendor}</td>
-                                                                                <td>{e.purchaser || '-'}</td>
-                                                                                <td className="truncate max-w-[150px]" title={e.justification}>{e.justification || '-'}</td>
-                                                                                <td className="text-right font-mono">${e.amount.toFixed(2)}</td>
-                                                                            </tr>
-                                                                        ))}
-                                                                        {catExpenditures.length === 0 && <tr><td colSpan={5} className="py-2 italic">No expenditures recorded.</td></tr>}
-                                                                    </tbody>
-                                                                </table>
+                                                            <div className="pl-6 mt-1 space-y-1">
+                                                                {catExpenditures.length === 0 && <div className="text-xs text-slate-400 italic">No expenditures yet.</div>}
+                                                                {catExpenditures.map(e => (
+                                                                    <div 
+                                                                        key={e.id} 
+                                                                        onClick={() => setSelectedExpenditure(e)}
+                                                                        className="flex justify-between text-xs text-slate-500 border-l-2 border-slate-200 pl-2 cursor-pointer hover:bg-white hover:text-brand-600 hover:border-brand-500 transition-colors py-1"
+                                                                    >
+                                                                        <span>{e.date} - {e.vendor}</span>
+                                                                        <span className="font-mono">${e.amount.toFixed(2)}</span>
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                         )}
                                                     </div>
@@ -235,11 +256,74 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
             );
           })}
         </div>
+
+        {/* Expenditure Detail Modal */}
+        {selectedExpenditure && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedExpenditure(null)}>
+                <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
+                    <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
+                        <h3 className="font-bold text-slate-800">Expenditure Details</h3>
+                        <button onClick={() => setSelectedExpenditure(null)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+                                <div className="text-slate-800">{selectedExpenditure.date}</div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Amount</label>
+                                <div className="text-slate-800 font-mono font-bold">${selectedExpenditure.amount.toLocaleString()}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Vendor</label>
+                            <div className="text-slate-800 flex items-center"><FileDigit size={16} className="mr-2 text-slate-400"/> {selectedExpenditure.vendor}</div>
+                        </div>
+                         <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Purchaser</label>
+                            <div className="text-slate-800 flex items-center"><User size={16} className="mr-2 text-slate-400"/> {selectedExpenditure.purchaser || 'N/A'}</div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Justification</label>
+                            <div className="text-slate-700 bg-slate-50 p-3 rounded-lg text-sm border border-slate-100">{selectedExpenditure.justification || 'No justification provided.'}</div>
+                        </div>
+                        {selectedExpenditure.notes && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Notes</label>
+                                <div className="text-slate-600 text-sm italic">{selectedExpenditure.notes}</div>
+                            </div>
+                        )}
+                        
+                        {selectedExpenditure.receiptUrl ? (
+                            <button 
+                                onClick={() => handleViewReceipt(selectedExpenditure.receiptUrl!)}
+                                className="w-full py-3 mt-2 bg-brand-50 text-brand-700 font-bold rounded-lg border border-brand-200 hover:bg-brand-100 flex justify-center items-center"
+                            >
+                                <Eye size={18} className="mr-2"/> View Receipt
+                            </button>
+                        ) : (
+                            <div className="text-center py-3 bg-slate-50 text-slate-400 rounded-lg text-sm">No receipt attached</div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Receipt Image Modal (Overlay) */}
+        {receiptImage && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={() => setReceiptImage(null)}>
+                <div className="relative max-w-5xl max-h-[90vh]">
+                     <button onClick={() => setReceiptImage(null)} className="absolute -top-10 right-0 text-white hover:text-red-400"><X size={32}/></button>
+                     <img src={receiptImage} alt="Receipt" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" />
+                </div>
+            </div>
+        )}
       </div>
     );
   }
 
-  // --- EDIT VIEW (Details, Deliverables, Reports Tabs) ---
+  // --- EDIT VIEW ---
   return (
     <div className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-[calc(100vh-8rem)]">
       <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
@@ -271,7 +355,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
               <HighContrastInput label="End Date" type="date" value={currentGrant.endDate || ''} onChange={e => setCurrentGrant({...currentGrant, endDate: e.target.value})} />
             </div>
             
-            {/* Attachments Section */}
             <div className="pt-4 border-t border-slate-200">
                 <h4 className="font-bold text-slate-700 mb-2 flex items-center"><Paperclip size={18} className="mr-2"/> Attachments</h4>
                 <div className="space-y-2 mb-3">
@@ -287,7 +370,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
           </div>
         )}
 
-        {/* ... Deliverables and Reports Tabs (same as previous response, just ensuring safety) ... */}
+        {/* ... Deliverables and Reports Tabs (Same as before) ... */}
         {activeTab === 'deliverables' && (
           <div className="space-y-6">
             {currentGrant.deliverables?.map((del, dIdx) => (
