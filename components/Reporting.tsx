@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, Expenditure } from '../types';
 import { HighContrastSelect, HighContrastInput, HighContrastTextArea } from './ui/Input';
-import { Download, FileText, Edit2, Save, X, Eye } from 'lucide-react';
+import { Download, FileText, Edit2, Save, X, Eye, Upload } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#e2e8f0'];
@@ -77,7 +77,6 @@ export const Reporting: React.FC = () => {
 
   const openReceipt = (path?: string) => {
     if(!path) return alert("No receipt attached.");
-    // Display base64 or file path in new window
     const win = window.open("");
     if(win) win.document.write(`<img src="${path}" style="max-width:100%"/>`);
   };
@@ -110,7 +109,7 @@ export const Reporting: React.FC = () => {
   return (
     <div className="space-y-6 print:p-0">
       <div className="flex justify-between items-center print:hidden">
-        <h2 className="text-2xl font-bold text-slate-900">Grant Monitoring</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Reporting & Management Hub</h2>
         <div className="w-64">
            <HighContrastSelect 
             options={grants.map(g => ({ value: g.id, label: g.name }))}
@@ -185,26 +184,35 @@ export const Reporting: React.FC = () => {
                            <td className="p-2"><HighContrastTextArea rows={2} value={editForm.justification} onChange={e => setEditForm({...editForm, justification: e.target.value})} /></td>
                            <td className="p-2 text-xs text-slate-400">Locked for Audit</td>
                            <td className="p-2"><HighContrastInput type="number" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})} /></td>
+                           
+                           {/* NEW: Receipt Upload/Replace Button */}
                            <td className="p-2 text-center">
-                              <label className="cursor-pointer text-xs bg-slate-100 px-2 py-1 rounded hover:bg-slate-200">
-                                  Upload
-                                  <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
+                              <label className="cursor-pointer flex flex-col items-center justify-center text-xs text-brand-600 bg-brand-50 p-2 rounded hover:bg-brand-100">
+                                  <Upload size={14} />
+                                  <span>{editForm.receiptUrl ? 'Replace' : 'Add'}</span>
+                                  <input 
+                                    type="file" 
+                                    className="hidden" 
+                                    accept="image/*" 
+                                    onChange={async (e) => {
                                       if(e.target.files?.[0]) {
                                           const file = e.target.files[0];
                                           const reader = new FileReader();
                                           reader.onload = async () => {
                                               const base64 = reader.result as string;
-                                              // Save and update form
                                               if ((window as any).electronAPI) {
                                                   const path = await (window as any).electronAPI.saveReceipt(base64, `receipt_${Date.now()}.png`);
                                                   setEditForm(prev => ({ ...prev, receiptUrl: path }));
+                                                  alert("Receipt attached to draft. Click Save to confirm.");
                                               }
                                           };
                                           reader.readAsDataURL(file);
                                       }
-                                  }}/>
+                                    }}
+                                  />
                               </label>
-                          </td>
+                           </td>
+
                            <td className="p-2 flex justify-center space-x-1">
                               <button onClick={saveEdit} className="p-1 text-green-600 hover:bg-green-50 rounded"><Save size={16}/></button>
                               <button onClick={() => setEditingId(null)} className="p-1 text-red-600 hover:bg-red-50 rounded"><X size={16}/></button>
