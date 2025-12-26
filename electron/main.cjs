@@ -37,10 +37,9 @@ app.whenReady().then(() => {
     fs.mkdirSync(receiptsPath, { recursive: true });
   }
 
-  // SAVE Handler
+  // --- SAVE HANDLER ---
   ipcMain.handle('save-receipt', async (event, base64, filename) => {
     try {
-      // Sanitize filename
       const safeName = filename.replace(/[^a-z0-9.]/gi, '_');
       const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
       const buffer = Buffer.from(base64Data, 'base64');
@@ -48,7 +47,7 @@ app.whenReady().then(() => {
       
       await fs.promises.writeFile(filePath, buffer);
       
-      // RETURN WITH FORWARD SLASHES (Safe for all OS)
+      // Return path with forward slashes to prevent Windows path escaping issues in JS strings
       return filePath.replace(/\\/g, '/');
     } catch (error) {
       console.error("Failed to save receipt:", error);
@@ -56,10 +55,9 @@ app.whenReady().then(() => {
     }
   });
 
-  // READ Handler
+  // --- READ HANDLER (MISSING IN YOUR UPLOAD) ---
   ipcMain.handle('read-receipt', async (event, filepath) => {
     try {
-        // Normalize path just in case
         const safePath = path.normalize(filepath);
         const bitmap = await fs.promises.readFile(safePath);
         const base64 = Buffer.from(bitmap).toString('base64');
@@ -68,6 +66,7 @@ app.whenReady().then(() => {
         let mime = 'image/png';
         if(ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
         if(ext === '.webp') mime = 'image/webp';
+        if(ext === '.pdf') mime = 'application/pdf';
         
         return `data:${mime};base64,${base64}`;
     } catch (e) {
