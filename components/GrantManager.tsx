@@ -12,14 +12,17 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   
+  // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
   const [currentGrant, setCurrentGrant] = useState<Partial<Grant>>({});
   const [activeTab, setActiveTab] = useState<'details' | 'deliverables' | 'reports'>('details');
 
+  // Tree View State
   const [expandedGrants, setExpandedGrants] = useState<Set<string>>(new Set());
   const [expandedDeliverables, setExpandedDeliverables] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+  // Detail Modal State
   const [selectedExpenditure, setSelectedExpenditure] = useState<Expenditure | null>(null);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
 
@@ -37,6 +40,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     });
   };
 
+  // --- CRUD Handlers ---
   const handleAddNew = () => {
     setCurrentGrant({ id: crypto.randomUUID(), status: GrantStatus.Active, totalAward: 0, deliverables: [], reports: [], attachments: [] });
     setIsEditing(true);
@@ -60,7 +64,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const handleAddAttachment = async () => {
      const input = document.createElement('input');
      input.type = 'file';
-     input.accept = ".pdf,.png,.jpg,.jpeg,.webp"; // Recommend types
+     input.accept = ".pdf,.png,.jpg,.jpeg,.webp";
      input.onchange = async (e: any) => {
          const file = e.target.files[0];
          if(file && (window as any).electronAPI) {
@@ -87,17 +91,39 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const handleViewReceipt = async (path: string) => {
     if ((window as any).electronAPI) {
         try {
-            const base64 = await (window as any).electronAPI.readReceipt(path);
-            setReceiptImage(base64);
-        } catch (e) {
+            const dataUrl = await (window as any).electronAPI.readReceipt(path);
+            
+            if (dataUrl.startsWith('data:application/pdf')) {
+                const base64 = dataUrl.split(',')[1];
+                const binaryStr = window.atob(base64);
+                const len = binaryStr.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryStr.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'application/pdf' });
+                const blobUrl = URL.createObjectURL(blob);
+                setReceiptImage(blobUrl);
+            } else {
+                setReceiptImage(dataUrl);
+            }
+        } catch (e: any) {
             console.error(e);
-            alert("Error loading file. It may have been moved or deleted.");
+            alert(`Failed to load document.\n\nSystem Error: ${e.message || String(e)}\n\nPath: ${path}`);
         }
     } else {
         alert("File viewing is only available in the desktop app.");
     }
   };
 
+  const closeReceiptViewer = () => {
+      if (receiptImage && receiptImage.startsWith('blob:')) {
+          URL.revokeObjectURL(receiptImage);
+      }
+      setReceiptImage(null);
+  };
+
+  // --- Calculations for Tree View ---
   const getGrantStats = (g: Grant) => {
       const spent = expenditures.filter(e => e.grantId === g.id).reduce((s, e) => s + e.amount, 0);
       return { spent, remaining: (g.totalAward || 0) - spent };
@@ -113,6 +139,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       return { spent };
   };
 
+  // --- Helper to add new items in Tree View ---
   const quickAddDeliverable = (g: Grant) => {
       const newDel: Deliverable = { id: crypto.randomUUID(), sectionReference: 'New Del', description: '', allocatedValue: 0, dueDate: '', status: 'Pending', budgetCategories: [] };
       g.deliverables.push(newDel);
@@ -133,6 +160,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       if(onNavigate) onNavigate('ingestion', { action: 'prefill', grantId: gId, deliverableId: dId, categoryId: cId });
   };
 
+  // --- EDIT MODE SUB-FUNCTIONS ---
   const updateDeliverable = (idx:number, field: keyof Deliverable, val: any) => {
       const d = [...(currentGrant.deliverables || [])];
       d[idx] = { ...d[idx], [field]: val };
@@ -168,6 +196,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
             return (
               <div key={grant.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                {/* Level 1: Grant */}
                 <div className="p-4 flex items-center justify-between bg-slate-50 cursor-pointer hover:bg-slate-100" onClick={() => toggleExpand(grant.id, setExpandedGrants)}>
                    <div className="flex items-center space-x-3">
                        {isExpanded ? <ChevronDown size={20} className="text-slate-500"/> : <ChevronRight size={20} className="text-slate-500"/>}
@@ -181,12 +210,14 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                 {isExpanded && (
                     <div className="border-t border-slate-200">
+                        {/* Deliverables List */}
                         {grant.deliverables?.map((del, dIdx) => {
                             const dStats = getDeliverableStats(del);
                             const isDelExpanded = expandedDeliverables.has(del.id);
 
                             return (
                                 <div key={del.id} className="border-b border-slate-100 last:border-0">
+                                    {/* Level 2: Deliverable */}
                                     <div className="p-3 pl-10 flex items-center justify-between hover:bg-slate-50 cursor-pointer" onClick={() => toggleExpand(del.id, setExpandedDeliverables)}>
                                         <div className="flex items-center space-x-3">
                                             {isDelExpanded ? <ChevronDown size={16} className="text-slate-400"/> : <ChevronRight size={16} className="text-slate-400"/>}
@@ -202,6 +233,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
                                     {isDelExpanded && (
                                         <div className="bg-slate-50/50 pl-20 pr-4 py-2">
+                                            {/* Level 3: Budgets */}
                                             {del.budgetCategories?.map((cat) => {
                                                 const cStats = getCategoryStats(cat.id, del.id);
                                                 const isCatExpanded = expandedCategories.has(cat.id);
@@ -220,17 +252,33 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                                             </div>
                                                         </div>
                                                         
+                                                        {/* Level 4: Expenditures List (RESTORED DETAILS) */}
                                                         {isCatExpanded && (
-                                                            <div className="pl-6 mt-1 space-y-1">
+                                                            <div className="pl-6 mt-1">
+                                                                {/* Header Row */}
+                                                                {catExpenditures.length > 0 && (
+                                                                    <div className="flex text-[10px] uppercase text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-2">
+                                                                        <div className="w-24">Date</div>
+                                                                        <div className="flex-1">Vendor</div>
+                                                                        <div className="flex-1">Purchaser</div>
+                                                                        <div className="flex-1">Justification</div>
+                                                                        <div className="w-20 text-right">Amount</div>
+                                                                    </div>
+                                                                )}
+                                                                
                                                                 {catExpenditures.length === 0 && <div className="text-xs text-slate-400 italic">No expenditures yet.</div>}
+                                                                
                                                                 {catExpenditures.map(e => (
                                                                     <div 
                                                                         key={e.id} 
                                                                         onClick={() => setSelectedExpenditure(e)}
-                                                                        className="flex justify-between text-xs text-slate-500 border-l-2 border-slate-200 pl-2 cursor-pointer hover:bg-white hover:text-brand-600 hover:border-brand-500 transition-colors py-1"
+                                                                        className="flex text-xs text-slate-600 border-l-2 border-slate-200 pl-2 cursor-pointer hover:bg-white hover:text-brand-600 hover:border-brand-500 transition-colors py-1 items-center"
                                                                     >
-                                                                        <span>{e.date} - {e.vendor}</span>
-                                                                        <span className="font-mono">${e.amount.toFixed(2)}</span>
+                                                                        <div className="w-24">{e.date}</div>
+                                                                        <div className="flex-1 truncate pr-2" title={e.vendor}>{e.vendor}</div>
+                                                                        <div className="flex-1 truncate pr-2" title={e.purchaser}>{e.purchaser || '-'}</div>
+                                                                        <div className="flex-1 truncate pr-2 text-slate-400 italic" title={e.justification}>{e.justification || '-'}</div>
+                                                                        <div className="w-20 text-right font-mono">${e.amount.toFixed(2)}</div>
                                                                     </div>
                                                                 ))}
                                                             </div>
@@ -309,12 +357,11 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
         {/* Receipt/Attachment Viewer Modal */}
         {receiptImage && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={() => setReceiptImage(null)}>
-                <div className="relative w-full max-w-5xl h-[85vh] flex flex-col justify-center">
-                     <button onClick={() => setReceiptImage(null)} className="absolute -top-10 right-0 text-white hover:text-red-400"><X size={32}/></button>
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={closeReceiptViewer}>
+                <div className="relative w-full max-w-5xl h-[85vh] flex flex-col justify-center" onClick={e => e.stopPropagation()}>
+                     <button onClick={closeReceiptViewer} className="absolute -top-10 right-0 text-white hover:text-red-400"><X size={32}/></button>
                      
-                     {/* FIX: Conditional rendering for PDF vs Image */}
-                     {receiptImage.startsWith('data:application/pdf') ? (
+                     {receiptImage.startsWith('blob:') || receiptImage.startsWith('data:application/pdf') ? (
                         <iframe src={receiptImage} className="w-full h-full bg-white rounded-lg shadow-2xl" title="Document Viewer" />
                      ) : (
                         <img src={receiptImage} alt="Document" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl mx-auto" />
@@ -432,12 +479,13 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
         )}
       </div>
 
-      {/* SHARED RECEIPT VIEWER (FOR BOTH MODES) */}
+      {/* SHARED RECEIPT VIEWER (Overlay) */}
       {receiptImage && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={() => setReceiptImage(null)}>
-                <div className="relative w-full max-w-5xl h-[85vh] flex flex-col justify-center">
-                     <button onClick={() => setReceiptImage(null)} className="absolute -top-10 right-0 text-white hover:text-red-400"><X size={32}/></button>
-                     {receiptImage.startsWith('data:application/pdf') ? (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={closeReceiptViewer}>
+                <div className="relative w-full max-w-5xl h-[85vh] flex flex-col justify-center" onClick={e => e.stopPropagation()}>
+                     <button onClick={closeReceiptViewer} className="absolute -top-10 right-0 text-white hover:text-red-400"><X size={32}/></button>
+                     
+                     {receiptImage.startsWith('blob:') || receiptImage.startsWith('data:application/pdf') ? (
                         <iframe src={receiptImage} className="w-full h-full bg-white rounded-lg shadow-2xl" title="Document Viewer" />
                      ) : (
                         <img src={receiptImage} alt="Document" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl mx-auto" />

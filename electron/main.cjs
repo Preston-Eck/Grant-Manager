@@ -37,11 +37,14 @@ app.whenReady().then(() => {
     fs.mkdirSync(receiptsPath, { recursive: true });
   }
 
-  // SAVE Handler
+  // --- SAVE HANDLER ---
   ipcMain.handle('save-receipt', async (event, base64, filename) => {
     try {
       const safeName = filename.replace(/[^a-z0-9.]/gi, '_');
-      const base64Data = base64.replace(/^data:image\/\w+;base64,/, "").replace(/^data:application\/pdf;base64,/, "");
+      
+      // FIX: Generic Regex to strip ANY data URI scheme (image, pdf, etc.)
+      const base64Data = base64.replace(/^data:.+;base64,/, "");
+      
       const buffer = Buffer.from(base64Data, 'base64');
       const filePath = path.join(receiptsPath, safeName);
       
@@ -54,7 +57,7 @@ app.whenReady().then(() => {
     }
   });
 
-  // READ Handler
+  // --- READ HANDLER ---
   ipcMain.handle('read-receipt', async (event, filepath) => {
     try {
         const safePath = path.normalize(filepath);
@@ -62,12 +65,10 @@ app.whenReady().then(() => {
         const base64 = Buffer.from(bitmap).toString('base64');
         
         const ext = path.extname(safePath).toLowerCase();
-        
-        // FIX: Default to png, but explicitly handle PDF
-        let mime = 'image/png';
+        let mime = 'image/png'; // Default
         if(ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
         if(ext === '.webp') mime = 'image/webp';
-        if(ext === '.pdf') mime = 'application/pdf'; // CRITICAL FIX
+        if(ext === '.pdf') mime = 'application/pdf'; // Essential for PDF support
         
         return `data:${mime};base64,${base64}`;
     } catch (e) {
