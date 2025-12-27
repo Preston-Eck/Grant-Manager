@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/dbService';
-import { Grant, Expenditure, IngestionItem } from '../types';
+// FIX: Imported missing types
+import { Grant, Expenditure, IngestionItem, Deliverable, BudgetCategory } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-// FIX: Added Loader2 to imports
 import { Save, Upload, FileText, Scan, FileInput, Trash2, Check, Loader2 } from 'lucide-react';
 import { parseReceiptImage } from '../services/geminiService';
 
@@ -16,11 +16,9 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [mode, setMode] = useState<'scan' | 'manual'>('manual');
   
-  // Scanner State
   const [queue, setQueue] = useState<IngestionItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Manual Form State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [form, setForm] = useState<Partial<Expenditure>>({
@@ -31,6 +29,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     justification: '',
     notes: '',
     grantId: '',
+    subRecipientId: '',
     deliverableId: '',
     categoryId: '',
     fundingSource: 'Grant'
@@ -45,15 +44,26 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
         setForm(prev => ({
             ...prev,
             grantId: initialData.grantId,
+            subRecipientId: initialData.subRecipientId || '',
             deliverableId: initialData.deliverableId,
             categoryId: initialData.categoryId
         }));
     }
   }, [initialData]);
 
-  // --- Filtering Logic ---
   const selectedGrant = grants.find(g => g.id === form.grantId);
-  const availableDeliverables = selectedGrant?.deliverables || [];
+  
+  // FIX: Explicitly typed array
+  let availableDeliverables: Deliverable[] = [];
+  if (selectedGrant) {
+      if (form.subRecipientId) {
+          const sub = selectedGrant.subRecipients?.find(s => s.id === form.subRecipientId);
+          availableDeliverables = sub?.deliverables || [];
+      } else {
+          availableDeliverables = selectedGrant.deliverables || [];
+      }
+  }
+
   const selectedDeliverable = availableDeliverables.find(d => d.id === form.deliverableId);
   const availableCategories = selectedDeliverable?.budgetCategories || [];
 
@@ -61,7 +71,16 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
   const uniqueVendors = Array.from(new Set(relevantHistory.map(e => e.vendor))).sort();
   const uniquePurchasers = Array.from(new Set(relevantHistory.map(e => e.purchaser).filter((p): p is string => !!p))).sort();
 
-  // --- Manual Handlers ---
+  const getRecipientOptions = () => {
+      if (!selectedGrant) return [];
+      const options = [{ value: '', label: 'Primary Award Activities' }];
+      selectedGrant.subRecipients?.forEach(sub => {
+          options.push({ value: sub.id, label: `Community: ${sub.name}` });
+      });
+      return options;
+  };
+
+  // ... (Handlers remain unchanged) ...
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) setReceiptFile(e.target.files[0]);
   };
@@ -97,6 +116,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     const newTx: Expenditure = {
       id: crypto.randomUUID(),
       grantId: form.grantId,
+      subRecipientId: form.subRecipientId || undefined,
       deliverableId: form.deliverableId,
       categoryId: form.categoryId,
       date: form.date || new Date().toISOString().split('T')[0],
@@ -122,6 +142,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
         justification: '',
         notes: '',
         grantId: '',
+        subRecipientId: '',
         deliverableId: '',
         categoryId: '',
         fundingSource: 'Grant'
@@ -130,7 +151,6 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
     if(fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // --- Scanner Handlers ---
   const handleScanUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -164,6 +184,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
       const newTx: Expenditure = {
           id: crypto.randomUUID(),
           grantId: data.grantId,
+          subRecipientId: data.subRecipientId || undefined,
           deliverableId: data.deliverableId || '',
           categoryId: data.categoryId || '',
           date: data.date,
@@ -195,10 +216,14 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
 
       {mode === 'manual' ? (
         <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                <HighContrastSelect label="1. Grant" options={[{value: '', label: '-- Select --'}, ...grants.map(g => ({ value: g.id, label: g.name }))]} value={form.grantId} onChange={e => setForm({...form, grantId: e.target.value, deliverableId: '', categoryId: ''})} />
-                <HighContrastSelect label="2. Deliverable" options={[{value: '', label: '-- Select --'}, ...availableDeliverables.map(d => ({ value: d.id, label: d.sectionReference + ': ' + d.description }))]} value={form.deliverableId} disabled={!form.grantId} onChange={e => setForm({...form, deliverableId: e.target.value, categoryId: ''})} />
-                <HighContrastSelect label="3. Category" options={[{value: '', label: '-- Select --'}, ...availableCategories.map(c => ({ value: c.id, label: c.name }))]} value={form.categoryId} disabled={!form.deliverableId} onChange={e => setForm({...form, categoryId: e.target.value})} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                <HighContrastSelect label="1. Grant" options={[{value: '', label: '-- Select --'}, ...grants.map(g => ({ value: g.id, label: g.name }))]} value={form.grantId} onChange={e => setForm({...form, grantId: e.target.value, subRecipientId: '', deliverableId: '', categoryId: ''})} />
+                
+                <HighContrastSelect label="2. Recipient Context" options={getRecipientOptions()} value={form.subRecipientId || ''} disabled={!form.grantId} onChange={e => setForm({...form, subRecipientId: e.target.value, deliverableId: '', categoryId: ''})} />
+                
+                <HighContrastSelect label="3. Deliverable" options={[{value: '', label: '-- Select --'}, ...availableDeliverables.map(d => ({ value: d.id, label: d.sectionReference + ': ' + d.description }))]} value={form.deliverableId} disabled={!form.grantId} onChange={e => setForm({...form, deliverableId: e.target.value, categoryId: ''})} />
+                {/* FIX: Explicitly typed parameter 'c' */}
+                <HighContrastSelect label="4. Category" options={[{value: '', label: '-- Select --'}, ...availableCategories.map((c: BudgetCategory) => ({ value: c.id, label: c.name }))]} value={form.categoryId} disabled={!form.deliverableId} onChange={e => setForm({...form, categoryId: e.target.value})} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -245,7 +270,6 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
                 <button className="bg-brand-600 text-white px-6 py-3 rounded-lg flex items-center space-x-2 shadow-md hover:bg-brand-700">{loading ? <Loader2 className="animate-spin" /> : <Upload />} <span>Upload & Scan Receipt</span></button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* FIX: Added implicit type annotation for id string */}
                 {queue.map(item => <ReviewCard key={item.id} item={item} grants={grants} onSave={saveScannedItem} onRemove={(id: string) => setQueue(q => q.filter(i => i.id !== id))} />)}
             </div>
         </div>
@@ -254,7 +278,6 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
   );
 };
 
-// FIX: Added Interface for ReviewCard props
 interface ReviewCardProps {
   item: IngestionItem;
   grants: Grant[];
@@ -263,8 +286,14 @@ interface ReviewCardProps {
 }
 
 const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove }) => {
-    const [data, setData] = useState<any>(item.parsedData || { amount: 0, date: '', vendor: '', fundingSource: 'Grant' });
+    const [data, setData] = useState<any>(item.parsedData || { amount: 0, date: '', vendor: '', fundingSource: 'Grant', subRecipientId: '' });
     
+    const selectedGrant = grants.find(g => g.id === data.grantId);
+    const recipientOptions = selectedGrant ? [
+        { value: '', label: 'Primary' }, 
+        ...(selectedGrant.subRecipients || []).map(s => ({ value: s.id, label: s.name }))
+    ] : [];
+
     useEffect(() => { if (item.parsedData) setData((d:any) => ({ ...d, ...item.parsedData })); }, [item.parsedData]);
 
     if (item.status === 'Scanning') return <div className="bg-white p-6 rounded-xl shadow-md flex justify-center items-center h-64"><Loader2 className="animate-spin text-brand-500" size={32} /></div>;
@@ -274,6 +303,7 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ item, grants, onSave, onRemove 
             <img src={item.rawImage} className="h-32 w-full object-contain bg-slate-100 rounded" />
             <div className="space-y-2">
                 <HighContrastSelect label="Grant" options={grants.map((g:Grant) => ({ value: g.id, label: g.name }))} value={data.grantId} onChange={(e:any) => setData({...data, grantId: e.target.value})} />
+                <HighContrastSelect label="Recipient" options={recipientOptions} value={data.subRecipientId} onChange={(e:any) => setData({...data, subRecipientId: e.target.value})} />
                 <HighContrastSelect label="Funding Source" options={[{value: 'Grant', label: 'Grant Funds'}, {value: 'Match', label: 'Match'}]} value={data.fundingSource} onChange={(e:any) => setData({...data, fundingSource: e.target.value})} />
                 <HighContrastInput label="Vendor" value={data.vendor} onChange={(e:any) => setData({...data, vendor: e.target.value})} />
                 <HighContrastInput label="Amount" type="number" value={data.amount} onChange={(e:any) => setData({...data, amount: e.target.value})} />

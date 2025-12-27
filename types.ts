@@ -1,13 +1,8 @@
-export enum GrantStatus {
-  Draft = 'Draft',
-  Active = 'Active',
-  Closed = 'Closed',
-  Pending = 'Pending'
-}
+export type GrantStatus = 'Draft' | 'Pending' | 'Active' | 'Closed' | 'Archived';
 
 export interface BudgetCategory {
   id: string;
-  name: string; 
+  name: string;
   allocation: number;
   purpose: string;
 }
@@ -18,19 +13,24 @@ export interface Deliverable {
   description: string;
   allocatedValue: number;
   dueDate: string;
-  status: 'Pending' | 'In Progress' | 'Completed' | 'Delayed'; // Status column
+  status: 'Pending' | 'In Progress' | 'Completed' | 'Deferred';
   budgetCategories: BudgetCategory[];
+}
+
+// NEW: Sub-Recipient Structure
+export interface SubRecipient {
+  id: string;
+  name: string; // e.g. "Fruitvale Community Center"
+  allocatedAmount: number; // Funds passed through to them
+  deliverables: Deliverable[]; // Their specific goals
 }
 
 export interface ComplianceReport {
   id: string;
   title: string;
   dueDate: string;
-  submittedDate?: string;
-  type: 'Financial' | 'Programmatic' | 'Audit' | 'Other';
-  status: 'Pending' | 'Submitted' | 'Overdue' | 'Accepted';
-  comments?: string;
-  attachmentPath?: string;
+  type: 'Financial' | 'Programmatic' | 'Audit';
+  status: 'Pending' | 'Submitted' | 'Overdue';
 }
 
 export interface Grant {
@@ -42,29 +42,46 @@ export interface Grant {
   startDate: string;
   endDate: string;
   status: GrantStatus;
-  deliverables: Deliverable[];
+  indirectCostRate: number;
+  requiredMatchAmount: number;
+  
+  deliverables: Deliverable[]; // Primary Grant Deliverables
+  subRecipients: SubRecipient[]; // NEW: List of Communities
+  
   reports: ComplianceReport[];
-  attachments: string[]; // NEW: Grant-level attachments
-  indirectCostRate: number; // e.g., 10.0 for 10%
-  requiredMatchAmount: number; // e.g., 10000
-  auditLog: AuditEvent[]; // NEW: Audit log
+  attachments: string[];
+  auditLog: AuditEvent[];
 }
 
 export interface Expenditure {
   id: string;
   grantId: string;
+  subRecipientId?: string; // NEW: If present, expense belongs to community
   deliverableId: string;
   categoryId: string;
   date: string;
   vendor: string;
   amount: number;
+  purchaser: string;
   justification: string;
-  receiptUrl?: string; 
-  status: 'Pending' | 'Approved' | 'Rejected';
-  purchaser?: string;
-  notes?: string;
-  fundingSource: 'Grant' | 'Match' | 'Third-Party'; // New field
-  isIndirectCost?: boolean; // Flag if this is an overhead charge
+  notes: string;
+  receiptUrl?: string;
+  status: 'Pending' | 'Approved' | 'Flagged';
+  fundingSource: 'Grant' | 'Match' | 'Third-Party';
+}
+
+export interface AuditEvent {
+  date: string;
+  user: string;
+  action: string;
+  details: string;
+}
+
+export interface IngestionItem {
+  id: string;
+  rawImage: string;
+  parsedData: any;
+  status: 'Scanning' | 'Review' | 'Done';
 }
 
 export interface EmailTemplate {
@@ -72,18 +89,4 @@ export interface EmailTemplate {
   title: string;
   subject: string;
   body: string;
-}
-
-export interface IngestionItem {
-  id: string;
-  rawImage: string; 
-  parsedData: Partial<Expenditure> | null;
-  status: 'Scanning' | 'Review' | 'Approved';
-}
-
-export interface AuditEvent {
-  date: string;
-  user: string; // "System" or "User"
-  action: string; // "Budget Amended", "Expenditure Deleted"
-  details: string; // "Changed budget from $50k to $60k"
 }

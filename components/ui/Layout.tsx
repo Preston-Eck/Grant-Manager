@@ -77,14 +77,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
             onClick={() => setActiveTab('communication')} 
           />
           
-          <div className="pt-4 mt-4 border-t border-slate-800">
-            <SidebarItem 
-              icon={MessageSquareWarning} 
-              label="Beta Feedback" 
-              active={activeTab === 'feedback'} 
-              onClick={() => setActiveTab('feedback')} 
-            />
-          </div>
+          {/* FIX: Removed duplicate Feedback block here */}
 
           <div className="pt-4 mt-4 border-t border-slate-800 space-y-2">
             <SidebarItem 

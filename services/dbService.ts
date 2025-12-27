@@ -1,6 +1,5 @@
 import { Grant, Expenditure, EmailTemplate, GrantStatus } from '../types';
 
-// Initial Data Seeding
 const INITIAL_GRANTS: Grant[] = [
   {
     id: 'g-1',
@@ -10,13 +9,13 @@ const INITIAL_GRANTS: Grant[] = [
     totalAward: 50000,
     startDate: '2023-01-01',
     endDate: '2023-12-31',
-    status: GrantStatus.Active,
+    status: 'Active',
     reports: [],
     attachments: [],
-    // NEW FIELDS
-    indirectCostRate: 10.0, // 10% de minimis
+    indirectCostRate: 10.0,
     requiredMatchAmount: 5000,
     auditLog: [],
+    subRecipients: [], 
     deliverables: [
       {
         id: 'd-1',
@@ -65,13 +64,11 @@ class DBService {
     try {
       const rawGrants = JSON.parse(localStorage.getItem(this.grantsKey) || '[]');
       const updatedGrants = rawGrants.map((g: any) => {
-        // Migration: Add new fields if missing
         if (g.indirectCostRate === undefined) g.indirectCostRate = 0;
         if (g.requiredMatchAmount === undefined) g.requiredMatchAmount = 0;
         if (!g.auditLog) g.auditLog = [];
         if (!g.attachments) g.attachments = [];
-        
-        // Rename legacy field
+        if (!g.subRecipients) g.subRecipients = [];
         if (g.totalAward === undefined && g.budget !== undefined) {
           g.totalAward = g.budget;
         }
@@ -79,7 +76,6 @@ class DBService {
       });
       localStorage.setItem(this.grantsKey, JSON.stringify(updatedGrants));
       
-      // Migrate Expenditures to have fundingSource
       const rawExp = JSON.parse(localStorage.getItem(this.expendituresKey) || '[]');
       const updatedExp = rawExp.map((e: any) => {
           if(!e.fundingSource) e.fundingSource = 'Grant';
@@ -107,6 +103,11 @@ class DBService {
     localStorage.setItem(this.grantsKey, JSON.stringify(grants));
   }
 
+  deleteGrant(id: string) {
+    const grants = this.getGrants().filter(g => g.id !== id);
+    localStorage.setItem(this.grantsKey, JSON.stringify(grants));
+  }
+
   getExpenditures(grantId?: string): Expenditure[] {
     const all = JSON.parse(localStorage.getItem(this.expendituresKey) || '[]');
     if (grantId) return all.filter((t: Expenditure) => t.grantId === grantId);
@@ -116,6 +117,20 @@ class DBService {
   addExpenditure(tx: Expenditure) {
     const all = this.getExpenditures();
     all.push(tx);
+    localStorage.setItem(this.expendituresKey, JSON.stringify(all));
+  }
+
+  saveExpenditure(updated: Expenditure) {
+    const all = this.getExpenditures();
+    const index = all.findIndex(e => e.id === updated.id);
+    if (index !== -1) {
+      all[index] = updated;
+      localStorage.setItem(this.expendituresKey, JSON.stringify(all));
+    }
+  }
+
+  deleteExpenditure(id: string) {
+    const all = this.getExpenditures().filter(e => e.id !== id);
     localStorage.setItem(this.expendituresKey, JSON.stringify(all));
   }
 

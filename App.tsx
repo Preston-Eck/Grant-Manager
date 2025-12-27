@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Layout } from './components/ui/Layout';
 import { Dashboard } from './components/Dashboard';
-import { ExpenditureInput } from './components/ExpenditureInput'; // Ensure this matches filename
+import { ExpenditureInput } from './components/ExpenditureInput';
 import { GrantWizard } from './components/GrantWizard';
 import { Reporting } from './components/Reporting';
 import { Communication } from './components/Communication';
 import { DataManagement } from './components/DataManagement';
 import { GrantManager } from './components/GrantManager'; 
+// FIX: Import the Feedback component
+import { Feedback } from './components/Feedback';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -26,6 +28,8 @@ const App: React.FC = () => {
       case 'communication': return <Communication initialData={sharedData} />;
       case 'grants': return <GrantManager onNavigate={handleNavigate} />;
       case 'settings': return <DataManagement />;
+      // FIX: Add routing case for feedback
+      case 'feedback': return <Feedback />;
       default: return <Dashboard onNavigate={handleNavigate} />;
     }
   };
