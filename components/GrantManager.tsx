@@ -2,17 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, GrantStatus, Deliverable, ComplianceReport, BudgetCategory, Expenditure, SubRecipient } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Paperclip, FileText, X, Eye, User, FileDigit, Users, AlertTriangle, Check } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Paperclip, FileText, X, Eye, User, FileDigit, Users, AlertTriangle, Check, ArrowLeft } from 'lucide-react';
 
 interface GrantManagerProps {
   onNavigate?: (tab: string, data?: any) => void;
 }
 
 // --- Sub-Component: Deliverables Editor ---
-// Defined outside to prevent re-render focus loss
 const DeliverablesEditor = ({ deliverables, onChange, title }: { deliverables: Deliverable[], onChange: (d: Deliverable[]) => void, title?: string }) => {
     
-    // Helpers for Safe Number Input
     const safeParseFloat = (value: string): number => {
         const parsed = parseFloat(value);
         return isNaN(parsed) ? 0 : parsed;
@@ -87,22 +85,18 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const [expandedSubRecipients, setExpandedSubRecipients] = useState<Set<string>>(new Set());
   const [expandedDeliverables, setExpandedDeliverables] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const [expandedEditCommunities, setExpandedEditCommunities] = useState<Set<string>>(new Set());
 
   // Modal States
   const [selectedExpenditure, setSelectedExpenditure] = useState<Expenditure | null>(null);
   const [isEditingExpenditure, setIsEditingExpenditure] = useState(false);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   
-  // "Add Community" Modal
   const [addingCommunityTo, setAddingCommunityTo] = useState<string | null>(null);
   const [newCommunityForm, setNewCommunityForm] = useState({ name: '', allocation: 0 });
 
-  // "Universal Edit" Modal
   const [editItem, setEditItem] = useState<{ 
       type: 'grant' | 'sub' | 'del' | 'cat', 
       id: string, 
-      parentId?: string, 
       name: string, 
       amount?: number,
       onSave: (name: string, amount: number) => void 
@@ -122,13 +116,11 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     });
   };
 
-  // --- Helpers for Safe Number Input ---
   const safeParseFloat = (value: string): number => {
       const parsed = parseFloat(value);
       return isNaN(parsed) ? 0 : parsed;
   };
 
-  // --- CRUD Handlers ---
   const handleAddNew = () => {
     setCurrentGrant({ id: crypto.randomUUID(), status: 'Active', totalAward: 0, deliverables: [], subRecipients: [], reports: [], attachments: [] });
     setIsEditing(true);
@@ -156,7 +148,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     } else alert("Grant Name is required.");
   };
 
-  // --- Sub-Recipient Logic ---
   const openAddCommunityModal = (grantId: string) => {
       setNewCommunityForm({ name: '', allocation: 0 });
       setAddingCommunityTo(grantId);
@@ -191,7 +182,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       }
   };
 
-  // --- Universal Edit Logic ---
   const openEditModal = (type: 'grant' | 'sub' | 'del' | 'cat', item: any, onSave: (n: string, a: number) => void) => {
       setEditItem({
           type,
@@ -209,7 +199,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       }
   };
 
-  // --- Expenditure Logic (New) ---
   const handleSaveExpenditure = () => {
       if (selectedExpenditure) {
           db.saveExpenditure(selectedExpenditure);
@@ -227,7 +216,13 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       }
   };
 
-  // --- Calculations ---
+  const handleDeleteExpenditureInline = (id: string) => {
+    if (window.confirm("Delete this expenditure?")) {
+      db.deleteExpenditure(id);
+      refreshData();
+    }
+  };
+
   const getGrantStats = (g: Grant) => {
       const spent = expenditures.filter(e => e.grantId === g.id).reduce((s, e) => s + e.amount, 0);
       const primaryAllocated = (g.deliverables || []).reduce((sum, d) => sum + (d.allocatedValue || 0), 0);
@@ -255,7 +250,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       return { spent };
   };
 
-  // --- Actions ---
   const quickAddDeliverable = (grant: Grant, subRecipientId?: string) => {
       const newDel: Deliverable = { id: crypto.randomUUID(), sectionReference: 'New', description: 'New Deliverable', allocatedValue: 0, dueDate: '', status: 'Pending', budgetCategories: [] };
       if (subRecipientId) {
@@ -288,7 +282,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       if(onNavigate) onNavigate('ingestion', { action: 'prefill', grantId: gId, subRecipientId: subId, deliverableId: dId, categoryId: cId });
   };
 
-  // --- Handlers ---
   const handleViewReceipt = async (path: string) => {
     if ((window as any).electronAPI) {
         try {
@@ -319,46 +312,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
           URL.revokeObjectURL(receiptImage);
       }
       setReceiptImage(null);
-  };
-
-  const handleAddAttachment = async () => {
-     const input = document.createElement('input');
-     input.type = 'file';
-     input.accept = ".pdf,.png,.jpg,.jpeg,.webp";
-     input.onchange = async (e: any) => {
-         const file = e.target.files[0];
-         if(file && (window as any).electronAPI) {
-            const reader = new FileReader();
-            reader.onload = async () => {
-                const base64 = reader.result as string;
-                const path = await (window as any).electronAPI.saveReceipt(base64, file.name);
-                setCurrentGrant(prev => ({...prev, attachments: [...(prev.attachments || []), path]}));
-            };
-            reader.readAsDataURL(file);
-         }
-     };
-     input.click();
-  };
-
-  const handleDeleteAttachment = (index: number) => {
-      if (window.confirm("Are you sure you want to delete this attachment?")) {
-          const newAttachments = [...(currentGrant.attachments || [])];
-          newAttachments.splice(index, 1);
-          setCurrentGrant({ ...currentGrant, attachments: newAttachments });
-      }
-  };
-
-  // --- EDIT MODE WRAPPERS ---
-  const updateSubRecipient = (idx: number, field: keyof SubRecipient, val: any) => {
-      const subs = [...(currentGrant.subRecipients || [])];
-      subs[idx] = { ...subs[idx], [field]: val };
-      setCurrentGrant({ ...currentGrant, subRecipients: subs });
-  };
-  
-  const updateReport = (idx:number, field: keyof ComplianceReport, val: any) => {
-      const r = [...(currentGrant.reports || [])];
-      r[idx] = { ...r[idx], [field]: val };
-      setCurrentGrant({ ...currentGrant, reports: r });
   };
 
   const renderDeliverableNode = (grant: Grant, del: Deliverable, subRecipientId?: string) => {
@@ -473,6 +426,9 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                                 <div className="flex-1 truncate pr-2">{e.vendor}</div>
                                                 <div className="flex-1 truncate pr-2">{e.purchaser || '-'}</div>
                                                 <div className="w-20 text-right font-mono">${e.amount.toFixed(2)}</div>
+                                                <button onClick={(ev) => { ev.stopPropagation(); handleDeleteExpenditureInline(e.id); }} className="p-1 text-slate-300 hover:text-red-500 ml-2">
+                                                  <Trash2 size={12} />
+                                                </button>
                                             </div>
                                         ))}
                                         {catExpenditures.length === 0 && <div className="text-xs text-slate-400 italic">No expenditures yet.</div>}
@@ -488,8 +444,133 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       );
   };
 
-  if (!isEditing) {
+  // --- EDIT MODE RENDERER ---
+  if (isEditing) {
     return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+             <button onClick={() => setIsEditing(false)} className="p-2 rounded-full hover:bg-slate-200 text-slate-500"><ArrowLeft size={20} /></button>
+             <h2 className="text-2xl font-bold text-slate-900">{currentGrant.id ? `Edit: ${currentGrant.name}` : 'New Grant'}</h2>
+          </div>
+          <button onClick={handleSave} className="flex items-center space-x-2 bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 shadow-sm">
+            <Save size={20} /> <span>Save Changes</span>
+          </button>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          {/* Tabs */}
+          <div className="flex border-b border-slate-200 bg-slate-50">
+            {['details', 'communities', 'deliverables', 'reports'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab as any)}
+                className={`px-6 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${
+                  activeTab === tab ? 'bg-white border-b-2 border-brand-500 text-brand-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-6">
+            {activeTab === 'details' && (
+               <div className="space-y-6 max-w-2xl">
+                 <HighContrastInput label="Grant Name" value={currentGrant.name || ''} onChange={e => setCurrentGrant({...currentGrant, name: e.target.value})} />
+                 <HighContrastInput label="Funder" value={currentGrant.funder || ''} onChange={e => setCurrentGrant({...currentGrant, funder: e.target.value})} />
+                 <HighContrastTextArea label="Purpose" value={currentGrant.purpose || ''} onChange={e => setCurrentGrant({...currentGrant, purpose: e.target.value})} />
+                 <div className="grid grid-cols-2 gap-4">
+                   <HighContrastInput type="number" label="Total Award ($)" value={currentGrant.totalAward || 0} onChange={e => setCurrentGrant({...currentGrant, totalAward: safeParseFloat(e.target.value)})} />
+                   <HighContrastSelect label="Status" options={[{value:'Active',label:'Active'},{value:'Pending',label:'Pending'},{value:'Closed',label:'Closed'}]} value={currentGrant.status || 'Active'} onChange={e => setCurrentGrant({...currentGrant, status: e.target.value as any})} />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <HighContrastInput type="date" label="Start Date" value={currentGrant.startDate || ''} onChange={e => setCurrentGrant({...currentGrant, startDate: e.target.value})} />
+                   <HighContrastInput type="date" label="End Date" value={currentGrant.endDate || ''} onChange={e => setCurrentGrant({...currentGrant, endDate: e.target.value})} />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <HighContrastInput type="number" label="Indirect Cost Rate (%)" value={currentGrant.indirectCostRate || 0} onChange={e => setCurrentGrant({...currentGrant, indirectCostRate: safeParseFloat(e.target.value)})} />
+                   <HighContrastInput type="number" label="Required Match ($)" value={currentGrant.requiredMatchAmount || 0} onChange={e => setCurrentGrant({...currentGrant, requiredMatchAmount: safeParseFloat(e.target.value)})} />
+                 </div>
+               </div>
+            )}
+
+            {activeTab === 'communities' && (
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm border border-blue-100 flex items-start">
+                  <Users size={18} className="mr-2 mt-0.5" />
+                  <div>
+                    Manage sub-recipients here. You can assign specific deliverables and budgets to each community partner.
+                  </div>
+                </div>
+                {currentGrant.subRecipients?.map((sub, idx) => (
+                  <div key={sub.id} className="border border-slate-200 rounded-lg p-4 bg-slate-50 relative group">
+                     <button onClick={() => {
+                        const newSubs = [...(currentGrant.subRecipients || [])];
+                        newSubs.splice(idx, 1);
+                        setCurrentGrant({...currentGrant, subRecipients: newSubs});
+                     }} className="absolute top-2 right-2 text-slate-300 hover:text-red-500"><X size={20}/></button>
+                     
+                     <div className="grid grid-cols-2 gap-4 mb-4">
+                        <HighContrastInput label="Community Name" value={sub.name} onChange={e => {
+                           const newSubs = [...(currentGrant.subRecipients || [])];
+                           newSubs[idx].name = e.target.value;
+                           setCurrentGrant({...currentGrant, subRecipients: newSubs});
+                        }}/>
+                        <HighContrastInput label="Allocated Amount ($)" type="number" value={sub.allocatedAmount} onChange={e => {
+                           const newSubs = [...(currentGrant.subRecipients || [])];
+                           newSubs[idx].allocatedAmount = safeParseFloat(e.target.value);
+                           setCurrentGrant({...currentGrant, subRecipients: newSubs});
+                        }}/>
+                     </div>
+                     <DeliverablesEditor 
+                        title={`Deliverables for ${sub.name}`}
+                        deliverables={sub.deliverables} 
+                        onChange={d => {
+                           const newSubs = [...(currentGrant.subRecipients || [])];
+                           newSubs[idx].deliverables = d;
+                           setCurrentGrant({...currentGrant, subRecipients: newSubs});
+                        }} 
+                     />
+                  </div>
+                ))}
+                <button onClick={() => setCurrentGrant({...currentGrant, subRecipients: [...(currentGrant.subRecipients || []), { id: crypto.randomUUID(), name: 'New Community', allocatedAmount: 0, deliverables: [] }]})} className="flex items-center font-bold text-brand-600 hover:bg-brand-50 px-4 py-2 rounded">
+                  <Plus size={20} className="mr-2"/> Add Sub-Recipient Community
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'deliverables' && (
+               <DeliverablesEditor 
+                  title="Primary Grant Deliverables"
+                  deliverables={currentGrant.deliverables || []} 
+                  onChange={d => setCurrentGrant({...currentGrant, deliverables: d})} 
+               />
+            )}
+
+            {activeTab === 'reports' && (
+               <div className="space-y-4">
+                  {currentGrant.reports?.map((rep, idx) => (
+                      <div key={rep.id} className="flex gap-4 items-end bg-slate-50 p-4 rounded-lg border border-slate-200">
+                         <div className="flex-1"><HighContrastInput label="Report Title" value={rep.title} onChange={e => { const r = [...(currentGrant.reports||[])]; r[idx].title=e.target.value; setCurrentGrant({...currentGrant, reports: r}); }} /></div>
+                         <div className="w-40"><HighContrastInput type="date" label="Due Date" value={rep.dueDate} onChange={e => { const r = [...(currentGrant.reports||[])]; r[idx].dueDate=e.target.value; setCurrentGrant({...currentGrant, reports: r}); }} /></div>
+                         <div className="w-40"><HighContrastSelect label="Status" options={[{value:'Pending',label:'Pending'},{value:'Submitted',label:'Submitted'}]} value={rep.status} onChange={e => { const r = [...(currentGrant.reports||[])]; r[idx].status=e.target.value as any; setCurrentGrant({...currentGrant, reports: r}); }} /></div>
+                         <button onClick={() => { const r = [...(currentGrant.reports||[])]; r.splice(idx,1); setCurrentGrant({...currentGrant, reports: r}); }} className="text-red-500 p-2 hover:bg-red-50 rounded"><Trash2 size={20}/></button>
+                      </div>
+                  ))}
+                  <button onClick={() => setCurrentGrant({...currentGrant, reports: [...(currentGrant.reports || []), { id: crypto.randomUUID(), title: '', dueDate: '', type: 'Financial', status: 'Pending' }]})} className="flex items-center font-bold text-brand-600 hover:bg-brand-50 px-4 py-2 rounded">
+                    <Plus size={20} className="mr-2"/> Add Compliance Report
+                  </button>
+               </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- VIEW MODE RENDERER ---
+  return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold text-slate-900">Grant Portfolio</h2>
@@ -722,4 +803,3 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     </div>
   );
 };
-}

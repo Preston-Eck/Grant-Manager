@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, Expenditure } from '../types';
 import { HighContrastSelect, HighContrastInput, HighContrastTextArea } from './ui/Input';
-import { Download, FileText, Edit2, Save, X, Eye, Upload } from 'lucide-react';
+import { Download, FileText, Edit2, Save, X, Eye, Upload, Trash2 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#e2e8f0'];
@@ -74,6 +74,13 @@ export const Reporting: React.FC = () => {
        localStorage.setItem('eckerdt_expenditures', JSON.stringify(all));
        refreshData();
        setEditingId(null);
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm("Are you sure you want to delete this expenditure?")) {
+      db.deleteExpenditure(id);
+      refreshData();
     }
   };
 
@@ -223,7 +230,7 @@ export const Reporting: React.FC = () => {
 
                            <td className="p-2 flex justify-center space-x-1">
                               <button onClick={saveEdit} className="p-1 text-green-600 hover:bg-green-50 rounded"><Save size={16}/></button>
-                              <button onClick={() => setEditingId(null)} className="p-1 text-red-600 hover:bg-red-50 rounded"><X size={16}/></button>
+                              <button onClick={() => setEditingId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded"><X size={16}/></button>
                            </td>
                          </>
                        ) : (
@@ -241,7 +248,10 @@ export const Reporting: React.FC = () => {
                              {t.receiptUrl && <button onClick={() => openReceipt(t.receiptUrl)} className="text-brand-600 hover:text-brand-800"><FileText size={16}/></button>}
                            </td>
                            <td className="p-3 text-center">
-                             <button onClick={() => startEdit(t)} className="text-slate-400 hover:text-brand-600"><Edit2 size={16}/></button>
+                             <div className="flex space-x-1 justify-center">
+                               <button onClick={() => startEdit(t)} className="text-slate-400 hover:text-brand-600 p-1"><Edit2 size={16}/></button>
+                               <button onClick={() => handleDelete(t.id)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={16}/></button>
+                             </div>
                            </td>
                          </>
                        )}
