@@ -326,7 +326,42 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                     <div>
                         <div className="flex items-center space-x-2">
                             <span className="font-semibold text-sm text-slate-700">{del.sectionReference}: {del.description}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${del.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{del.status}</span>
+                            
+                            {/* FIX: Deliverable Status Dropdown */}
+                            <select
+                                value={del.status}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                    const newStatus = e.target.value as any;
+                                    if (subRecipientId) {
+                                        const sub = grant.subRecipients.find(s => s.id === subRecipientId);
+                                        if (sub) {
+                                            const dIndex = sub.deliverables.findIndex(d => d.id === del.id);
+                                            if (dIndex !== -1) {
+                                                sub.deliverables[dIndex].status = newStatus;
+                                                db.saveGrant(grant);
+                                                refreshData();
+                                            }
+                                        }
+                                    } else {
+                                        const dIndex = grant.deliverables.findIndex(d => d.id === del.id);
+                                        if (dIndex !== -1) {
+                                            grant.deliverables[dIndex].status = newStatus;
+                                            db.saveGrant(grant);
+                                            refreshData();
+                                        }
+                                    }
+                                }}
+                                className={`text-[10px] px-2 py-0.5 rounded-full border-0 cursor-pointer focus:ring-1 focus:ring-brand-500 font-bold uppercase ${
+                                    del.status === 'Completed' ? 'bg-green-100 text-green-700' : 
+                                    del.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                                    'bg-amber-100 text-amber-700'
+                                }`}
+                            >
+                                {['Pending', 'In Progress', 'Completed', 'Deferred'].map(s => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="text-xs text-slate-400 flex space-x-2">
                             <span>Allocated: ${(del.allocatedValue || 0).toLocaleString()}</span>
@@ -594,10 +629,26 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                        {isExpanded ? <ChevronDown size={20} className="text-slate-500"/> : <ChevronRight size={20} className="text-slate-500"/>}
                        <div>
                            <h3 className="font-bold text-lg text-slate-800">{grant.name}</h3>
-                           <div className="text-xs text-slate-500 flex space-x-3">
+                           <div className="text-xs text-slate-500 flex space-x-3 items-center">
                                 <span>Award: <strong>${(grant.totalAward || 0).toLocaleString()}</strong></span>
                                 <span className={gStats.unassigned < 0 ? 'text-red-600 font-bold' : ''}>Unallocated: ${(gStats.unassigned || 0).toLocaleString()}</span>
                                 <span>Total Spent: ${(gStats.spent || 0).toLocaleString()}</span>
+                                
+                                {/* FIX: Grant Status Dropdown */}
+                                <select
+                                    value={grant.status}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                        const updated = { ...grant, status: e.target.value as GrantStatus };
+                                        db.saveGrant(updated);
+                                        refreshData();
+                                    }}
+                                    className="ml-2 text-xs font-bold uppercase bg-white border border-slate-300 rounded text-slate-700 py-0.5 px-2 cursor-pointer hover:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                >
+                                    {['Draft', 'Pending', 'Active', 'Closed', 'Archived'].map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                    ))}
+                                </select>
                            </div>
                        </div>
                    </div>
