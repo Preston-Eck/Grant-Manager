@@ -8,6 +8,70 @@ interface GrantManagerProps {
   onNavigate?: (tab: string, data?: any) => void;
 }
 
+// --- Sub-Component: Deliverables Editor ---
+// Defined outside to prevent re-render focus loss
+const DeliverablesEditor = ({ deliverables, onChange, title }: { deliverables: Deliverable[], onChange: (d: Deliverable[]) => void, title?: string }) => {
+    
+    // Helpers for Safe Number Input
+    const safeParseFloat = (value: string): number => {
+        const parsed = parseFloat(value);
+        return isNaN(parsed) ? 0 : parsed;
+    };
+
+    const updateDel = (idx: number, field: keyof Deliverable, val: any) => {
+        const updated = [...deliverables];
+        updated[idx] = { ...updated[idx], [field]: val };
+        onChange(updated);
+    };
+
+    const updateCat = (dIdx: number, cIdx: number, field: keyof BudgetCategory, val: any) => {
+        const updated = [...deliverables];
+        updated[dIdx].budgetCategories[cIdx] = { ...updated[dIdx].budgetCategories[cIdx], [field]: val };
+        onChange(updated);
+    };
+
+    const addDel = () => { 
+        onChange([...deliverables, { id: crypto.randomUUID(), sectionReference: '', description: '', allocatedValue: 0, dueDate: '', status: 'Pending', budgetCategories: [] }]); 
+    };
+
+    const removeDel = (idx: number) => { 
+        const updated = [...deliverables]; 
+        updated.splice(idx, 1); 
+        onChange(updated); 
+    };
+
+    return (
+        <div className="space-y-6">
+          {title && <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wide border-b border-slate-200 pb-2">{title}</h4>}
+          {deliverables.map((del, dIdx) => (
+             <div key={del.id} className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-sm">
+                <div className="bg-slate-100 p-4 border-b border-slate-200 flex flex-wrap gap-4 items-end">
+                  <div className="w-24"><HighContrastInput label="Ref" value={del.sectionReference} onChange={e => updateDel(dIdx, 'sectionReference', e.target.value)} /></div>
+                  <div className="flex-1 min-w-[200px]"><HighContrastInput label="Description" value={del.description} onChange={e => updateDel(dIdx, 'description', e.target.value)} /></div>
+                  <div className="w-32"><HighContrastInput label="Allocated ($)" type="number" value={del.allocatedValue || 0} onChange={e => updateDel(dIdx, 'allocatedValue', safeParseFloat(e.target.value))} /></div>
+                  <div className="w-32"><HighContrastSelect label="Status" options={[{value:'Pending',label:'Pending'},{value:'In Progress',label:'In Progress'},{value:'Completed',label:'Completed'}]} value={del.status} onChange={e => updateDel(dIdx, 'status', e.target.value)} /></div>
+                  <button onClick={() => removeDel(dIdx)} className="text-red-500 p-2 hover:bg-red-50 rounded"><Trash2 size={20}/></button>
+                </div>
+                <div className="p-4 bg-slate-50/50">
+                  <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Budget Categories</h5>
+                  {del.budgetCategories?.map((cat, cIdx) => (
+                    <div key={cat.id} className="flex gap-2 mb-2 items-center">
+                      <ChevronRight size={16} className="text-slate-400" />
+                      <div className="flex-1"><HighContrastInput placeholder="Category Name" value={cat.name} onChange={e => updateCat(dIdx, cIdx, 'name', e.target.value)} /></div>
+                      <div className="w-32"><HighContrastInput type="number" placeholder="Amount" value={cat.allocation || 0} onChange={e => updateCat(dIdx, cIdx, 'allocation', safeParseFloat(e.target.value))} /></div>
+                      <div className="flex-1"><HighContrastInput placeholder="Purpose" value={cat.purpose} onChange={e => updateCat(dIdx, cIdx, 'purpose', e.target.value)} /></div>
+                      <button onClick={() => {const u = [...deliverables]; u[dIdx].budgetCategories.splice(cIdx, 1); onChange(u);}} className="text-slate-400 hover:text-red-500"><X size={16}/></button>
+                    </div>
+                  ))}
+                  <button onClick={() => {const u = [...deliverables]; u[dIdx].budgetCategories.push({ id: crypto.randomUUID(), name: '', allocation: 0, purpose: '' }); onChange(u);}} className="text-xs flex items-center text-brand-600 font-bold mt-2 hover:underline"><Plus size={14} className="mr-1"/> Add Budget Category</button>
+                </div>
+             </div>
+          ))}
+          <button onClick={addDel} className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-brand-500 hover:text-brand-600 font-bold flex justify-center items-center"><Plus size={20} className="mr-2"/> Add Deliverable</button>
+        </div>
+    );
+};
+
 export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
@@ -284,53 +348,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
       }
   };
 
-  // --- Sub-Components ---
-  const DeliverablesEditor = ({ deliverables, onChange, title }: { deliverables: Deliverable[], onChange: (d: Deliverable[]) => void, title?: string }) => {
-      const updateDel = (idx: number, field: keyof Deliverable, val: any) => {
-          const updated = [...deliverables];
-          updated[idx] = { ...updated[idx], [field]: val };
-          onChange(updated);
-      };
-      const updateCat = (dIdx: number, cIdx: number, field: keyof BudgetCategory, val: any) => {
-          const updated = [...deliverables];
-          updated[dIdx].budgetCategories[cIdx] = { ...updated[dIdx].budgetCategories[cIdx], [field]: val };
-          onChange(updated);
-      };
-      const addDel = () => { onChange([...deliverables, { id: crypto.randomUUID(), sectionReference: '', description: '', allocatedValue: 0, dueDate: '', status: 'Pending', budgetCategories: [] }]); };
-      const removeDel = (idx: number) => { const updated = [...deliverables]; updated.splice(idx, 1); onChange(updated); };
-
-      return (
-          <div className="space-y-6">
-            {title && <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wide border-b border-slate-200 pb-2">{title}</h4>}
-            {deliverables.map((del, dIdx) => (
-               <div key={del.id} className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-sm">
-                  <div className="bg-slate-100 p-4 border-b border-slate-200 flex flex-wrap gap-4 items-end">
-                    <div className="w-24"><HighContrastInput label="Ref" value={del.sectionReference} onChange={e => updateDel(dIdx, 'sectionReference', e.target.value)} /></div>
-                    <div className="flex-1 min-w-[200px]"><HighContrastInput label="Description" value={del.description} onChange={e => updateDel(dIdx, 'description', e.target.value)} /></div>
-                    <div className="w-32"><HighContrastInput label="Allocated ($)" type="number" value={del.allocatedValue || 0} onChange={e => updateDel(dIdx, 'allocatedValue', safeParseFloat(e.target.value))} /></div>
-                    <div className="w-32"><HighContrastSelect label="Status" options={[{value:'Pending',label:'Pending'},{value:'In Progress',label:'In Progress'},{value:'Completed',label:'Completed'}]} value={del.status} onChange={e => updateDel(dIdx, 'status', e.target.value)} /></div>
-                    <button onClick={() => removeDel(dIdx)} className="text-red-500 p-2 hover:bg-red-50 rounded"><Trash2 size={20}/></button>
-                  </div>
-                  <div className="p-4 bg-slate-50/50">
-                    <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Budget Categories</h5>
-                    {del.budgetCategories?.map((cat, cIdx) => (
-                      <div key={cat.id} className="flex gap-2 mb-2 items-center">
-                        <ChevronRight size={16} className="text-slate-400" />
-                        <div className="flex-1"><HighContrastInput placeholder="Category Name" value={cat.name} onChange={e => updateCat(dIdx, cIdx, 'name', e.target.value)} /></div>
-                        <div className="w-32"><HighContrastInput type="number" placeholder="Amount" value={cat.allocation || 0} onChange={e => updateCat(dIdx, cIdx, 'allocation', safeParseFloat(e.target.value))} /></div>
-                        <div className="flex-1"><HighContrastInput placeholder="Purpose" value={cat.purpose} onChange={e => updateCat(dIdx, cIdx, 'purpose', e.target.value)} /></div>
-                        <button onClick={() => {const u = [...deliverables]; u[dIdx].budgetCategories.splice(cIdx, 1); onChange(u);}} className="text-slate-400 hover:text-red-500"><X size={16}/></button>
-                      </div>
-                    ))}
-                    <button onClick={() => {const u = [...deliverables]; u[dIdx].budgetCategories.push({ id: crypto.randomUUID(), name: '', allocation: 0, purpose: '' }); onChange(u);}} className="text-xs flex items-center text-brand-600 font-bold mt-2 hover:underline"><Plus size={14} className="mr-1"/> Add Budget Category</button>
-                  </div>
-               </div>
-            ))}
-            <button onClick={addDel} className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-brand-500 hover:text-brand-600 font-bold flex justify-center items-center"><Plus size={20} className="mr-2"/> Add Deliverable</button>
-          </div>
-      );
-  };
-
+  // --- EDIT MODE WRAPPERS ---
   const updateSubRecipient = (idx: number, field: keyof SubRecipient, val: any) => {
       const subs = [...(currentGrant.subRecipients || [])];
       subs[idx] = { ...subs[idx], [field]: val };
@@ -704,3 +722,4 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     </div>
   );
 };
+}
