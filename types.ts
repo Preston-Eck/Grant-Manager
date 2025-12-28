@@ -15,6 +15,10 @@ export interface Deliverable {
   dueDate: string;
   status: 'Pending' | 'In Progress' | 'Completed' | 'Deferred';
   budgetCategories: BudgetCategory[];
+  // New Date Fields
+  startDate?: string;
+  endDate?: string;
+  completionDate?: string;
 }
 
 // NEW: Sub-Recipient Structure
