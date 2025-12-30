@@ -9,11 +9,12 @@ export interface BudgetCategory {
 
 export interface Deliverable {
   id: string;
+  // NEW: Robust typing to identify Sub-Awards programmatically
+  type: 'Standard' | 'SubAward'; 
   sectionReference: string;
   description: string;
   allocatedValue: number;
   dueDate: string;
-  // NEW: Date Fields
   startDate?: string;
   endDate?: string;
   completionDate?: string;
@@ -21,12 +22,11 @@ export interface Deliverable {
   budgetCategories: BudgetCategory[];
 }
 
-// NEW: Sub-Recipient Structure
 export interface SubRecipient {
   id: string;
-  name: string; // e.g. "Fruitvale Community Center"
-  allocatedAmount: number; // Funds passed through to them
-  deliverables: Deliverable[]; // Their specific goals
+  name: string;
+  allocatedAmount: number;
+  deliverables: Deliverable[];
 }
 
 export interface ComplianceReport {
@@ -48,10 +48,8 @@ export interface Grant {
   status: GrantStatus;
   indirectCostRate: number;
   requiredMatchAmount: number;
-  
-  deliverables: Deliverable[]; // Primary Grant Deliverables
-  subRecipients: SubRecipient[]; // NEW: List of Communities
-  
+  deliverables: Deliverable[];
+  subRecipients: SubRecipient[];
   reports: ComplianceReport[];
   attachments: string[];
   auditLog: AuditEvent[];
@@ -60,7 +58,7 @@ export interface Grant {
 export interface Expenditure {
   id: string;
   grantId: string;
-  subRecipientId?: string; // NEW: If present, expense belongs to community
+  subRecipientId?: string;
   deliverableId: string;
   categoryId: string;
   date: string;
@@ -93,4 +91,10 @@ export interface EmailTemplate {
   title: string;
   subject: string;
   body: string;
+}
+
+// Configuration Types
+export interface AppSettings {
+  dbPath: string;
+  apiKey?: string;
 }

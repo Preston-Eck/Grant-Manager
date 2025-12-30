@@ -1,181 +1,117 @@
-import { Grant, Expenditure, EmailTemplate, GrantStatus } from '../types';
+import { Grant, Expenditure, EmailTemplate } from '../types';
 
-const INITIAL_GRANTS: Grant[] = [
-  {
-    id: 'g-1',
-    name: 'Community Health Initiative',
-    funder: 'Global Wellness Foundation',
-    purpose: 'To improve access to clean water in rural districts.',
-    totalAward: 50000,
-    startDate: '2023-01-01',
-    endDate: '2023-12-31',
-    status: 'Active',
-    reports: [],
-    attachments: [],
-    indirectCostRate: 10.0,
-    requiredMatchAmount: 5000,
-    auditLog: [],
-    subRecipients: [], 
-    deliverables: [
-      {
-        id: 'd-1',
-        sectionReference: 'Obj 1.1',
-        description: 'Install 5 Water Filtration Systems',
-        allocatedValue: 30000,
-        dueDate: '2023-06-30',
-        status: 'In Progress',
-        budgetCategories: [
-           { id: 'c-1', name: 'Equipment', allocation: 20000, purpose: 'Filters and pumps' },
-           { id: 'c-2', name: 'Labor', allocation: 10000, purpose: 'Installation team' }
-        ]
-      }
-    ]
-  }
-];
-
-const INITIAL_TEMPLATES: EmailTemplate[] = [
-  { id: 't-1', title: 'Grant Kickoff', subject: 'Grant Kickoff: {{GrantName}}', body: 'Dear Team,\n\nWe are pleased to announce the start of {{GrantName}}. Please review the attached compliance documents.\n\nBest,\nGrant Admin' },
-  { id: 't-2', title: 'Receipt Correction Needed', subject: 'Action Required: Invalid Receipt for {{Vendor}}', body: 'Hello,\n\nThe receipt submitted for {{Vendor}} on {{Date}} is missing tax details. Please provide a valid tax invoice.\n\nThank you.' }
-];
+const EMPTY_STATE = {
+  grants: [],
+  expenditures: [],
+  templates: [
+    { id: 't-1', title: 'Grant Kickoff', subject: 'Kickoff: {{GrantName}}', body: '...' },
+    { id: 't-2', title: 'Receipt Issue', subject: 'Receipt Issue: {{Vendor}}', body: '...' }
+  ]
+};
 
 class DBService {
-  private grantsKey = 'eckerdt_grants';
-  private expendituresKey = 'eckerdt_expenditures';
-  private templatesKey = 'eckerdt_templates';
+  private cache: any = null;
+  private dbPath: string = '';
 
-  constructor() {
-    this.init();
-  }
-
-  private init() {
-    if (!localStorage.getItem(this.grantsKey)) {
-      localStorage.setItem(this.grantsKey, JSON.stringify(INITIAL_GRANTS));
+  // Initialize: Check for DB path in settings
+  async init(): Promise<boolean> {
+    if (!window.electronAPI) return false; // Guard for dev environment without Electron
+    
+    const settings = await window.electronAPI.getSettings();
+    if (settings && settings.dbPath) {
+      this.dbPath = settings.dbPath;
+      await this.load();
+      return true;
     }
-    if (!localStorage.getItem(this.expendituresKey)) {
-      localStorage.setItem(this.expendituresKey, JSON.stringify([]));
-    }
-    if (!localStorage.getItem(this.templatesKey)) {
-      localStorage.setItem(this.templatesKey, JSON.stringify(INITIAL_TEMPLATES));
-    }
-    this.migrate();
+    return false;
   }
 
-  private migrate() {
-    try {
-      const rawGrants = JSON.parse(localStorage.getItem(this.grantsKey) || '[]');
-      const updatedGrants = rawGrants.map((g: any) => {
-        if (g.indirectCostRate === undefined) g.indirectCostRate = 0;
-        if (g.requiredMatchAmount === undefined) g.requiredMatchAmount = 0;
-        if (!g.auditLog) g.auditLog = [];
-        if (!g.attachments) g.attachments = [];
-        if (!g.subRecipients) g.subRecipients = [];
-        if (g.totalAward === undefined && g.budget !== undefined) {
-          g.totalAward = g.budget;
-        }
-        return g;
-      });
-      localStorage.setItem(this.grantsKey, JSON.stringify(updatedGrants));
-      
-      const rawExp = JSON.parse(localStorage.getItem(this.expendituresKey) || '[]');
-      const updatedExp = rawExp.map((e: any) => {
-          if(!e.fundingSource) e.fundingSource = 'Grant';
-          return e;
-      });
-      localStorage.setItem(this.expendituresKey, JSON.stringify(updatedExp));
-
-    } catch (e) {
-      console.error("Migration failed", e);
-    }
+  async load() {
+    if (!this.dbPath) return;
+    const data = await window.electronAPI.readDb(this.dbPath);
+    this.cache = data || JSON.parse(JSON.stringify(EMPTY_STATE));
   }
 
-  getGrants(): Grant[] {
-    return JSON.parse(localStorage.getItem(this.grantsKey) || '[]');
+  async save() {
+    if (!this.dbPath || !this.cache) return;
+    await window.electronAPI.writeDb(this.dbPath, this.cache);
   }
 
-  saveGrant(grant: Grant) {
-    const grants = this.getGrants();
-    const existingIndex = grants.findIndex(g => g.id === grant.id);
-    if (existingIndex >= 0) {
-      grants[existingIndex] = grant;
-    } else {
-      grants.push(grant);
-    }
-    localStorage.setItem(this.grantsKey, JSON.stringify(grants));
+  async createNewDb(path: string) {
+    this.dbPath = path;
+    this.cache = JSON.parse(JSON.stringify(EMPTY_STATE));
+    await this.save();
+    
+    // Update settings file
+    const settings = await window.electronAPI.getSettings();
+    await window.electronAPI.saveSettings({ ...settings, dbPath: path });
   }
 
-  deleteGrant(id: string) {
-    const grants = this.getGrants().filter(g => g.id !== id);
-    localStorage.setItem(this.grantsKey, JSON.stringify(grants));
-  }
+  // --- Accessors (Read from Cache, Write Async) ---
 
+  getGrants(): Grant[] { return this.cache?.grants || []; }
   getExpenditures(grantId?: string): Expenditure[] {
-    const all = JSON.parse(localStorage.getItem(this.expendituresKey) || '[]');
-    if (grantId) return all.filter((t: Expenditure) => t.grantId === grantId);
+    const all = this.cache?.expenditures || [];
+    if (grantId) return all.filter((e: Expenditure) => e.grantId === grantId);
     return all;
   }
+  getTemplates(): EmailTemplate[] { return this.cache?.templates || []; }
+  getFullState() { return this.cache; }
 
-  addExpenditure(tx: Expenditure) {
-    const all = this.getExpenditures();
-    all.push(tx);
-    localStorage.setItem(this.expendituresKey, JSON.stringify(all));
+  // --- Mutators ---
+
+  async saveGrant(grant: Grant) {
+    if (!this.cache) await this.load();
+    const idx = this.cache.grants.findIndex((g: Grant) => g.id === grant.id);
+    if (idx >= 0) this.cache.grants[idx] = grant;
+    else this.cache.grants.push(grant);
+    await this.save();
   }
 
-  saveExpenditure(updated: Expenditure) {
-    const all = this.getExpenditures();
-    const index = all.findIndex(e => e.id === updated.id);
+  async deleteGrant(id: string) {
+    if (!this.cache) return;
+    this.cache.grants = this.cache.grants.filter((g: Grant) => g.id !== id);
+    await this.save();
+  }
+
+  async addExpenditure(tx: Expenditure) {
+    if (!this.cache) await this.load();
+    this.cache.expenditures.push(tx);
+    await this.save();
+  }
+
+  async saveExpenditure(updated: Expenditure) {
+    if (!this.cache) await this.load();
+    const index = this.cache.expenditures.findIndex((e: Expenditure) => e.id === updated.id);
     if (index !== -1) {
-      all[index] = updated;
-      localStorage.setItem(this.expendituresKey, JSON.stringify(all));
+      this.cache.expenditures[index] = updated;
+      await this.save();
     }
   }
 
-  deleteExpenditure(id: string) {
-    const all = this.getExpenditures().filter(e => e.id !== id);
-    localStorage.setItem(this.expendituresKey, JSON.stringify(all));
+  async deleteExpenditure(id: string) {
+    if (!this.cache) return;
+    this.cache.expenditures = this.cache.expenditures.filter((e: Expenditure) => e.id !== id);
+    await this.save();
   }
 
-  getTemplates(): EmailTemplate[] {
-    return JSON.parse(localStorage.getItem(this.templatesKey) || '[]');
+  async saveTemplate(template: EmailTemplate) {
+    if(!this.cache) await this.load();
+    const idx = this.cache.templates.findIndex((t: EmailTemplate) => t.id === template.id);
+    if (idx >= 0) this.cache.templates[idx] = template;
+    else this.cache.templates.push(template);
+    await this.save();
   }
 
-  saveTemplate(template: EmailTemplate) {
-    const templates = this.getTemplates();
-    const existingIndex = templates.findIndex(t => t.id === template.id);
-    if (existingIndex >= 0) {
-      templates[existingIndex] = template;
-    } else {
-      templates.push(template);
-    }
-    localStorage.setItem(this.templatesKey, JSON.stringify(templates));
+  async deleteTemplate(id: string) {
+    if (!this.cache) return;
+    this.cache.templates = this.cache.templates.filter((t: EmailTemplate) => t.id !== id);
+    await this.save();
   }
 
-  deleteTemplate(id: string) {
-    const templates = this.getTemplates().filter(t => t.id !== id);
-    localStorage.setItem(this.templatesKey, JSON.stringify(templates));
-  }
-
-  getFullState() {
-    return {
-      grants: this.getGrants(),
-      expenditures: this.getExpenditures(),
-      templates: this.getTemplates(),
-      timestamp: new Date().toISOString()
-    };
-  }
-
-  importState(data: any): boolean {
-    try {
-      if (!data.grants || !data.expenditures) {
-        throw new Error("Invalid backup file format.");
-      }
-      localStorage.setItem(this.grantsKey, JSON.stringify(data.grants));
-      localStorage.setItem(this.expendituresKey, JSON.stringify(data.expenditures));
-      if (data.templates) localStorage.setItem(this.templatesKey, JSON.stringify(data.templates));
-      return true;
-    } catch (e) {
-      console.error("Import failed:", e);
-      return false;
-    }
+  importState(data: any) {
+    this.cache = data;
+    this.save();
   }
 }
 
