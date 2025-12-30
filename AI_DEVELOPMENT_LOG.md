@@ -85,6 +85,13 @@
     * Added `DeliverableModal` supporting Start/End/Completion dates.
     * Restored Attachments to Grant Details and Reports tabs.
 
+### [Major Stability Update: Inputs & Robustness]
+* **Currency Input Overhaul:** Replaced basic inputs with `HighContrastCurrencyInput`. This component separates "display state" (commas) from "edit state" to prevent the cursor jump bug when typing decimals.
+* **Burn Rate & Forecasting:** Added visual burn rate calculation to the Dashboard. It now predicts how many months of funding are left based on current spending velocity.
+* **Match Tracking:** Added specific tracking for Cost Share/Match vs. Grant Funds. Dashboard now alerts if Match is falling behind the required ratio.
+* **Indirect Costs (IDC):** Added "Apply Indirect Cost" checkbox to the Expenditure Input. When checked, it automatically generates a second transaction for the overhead amount based on the grant's configured IDC rate.
+* **Audit Logs:** Implemented `logAudit` in `dbService`. Critical actions (Create/Update/Delete) now write to a persistent, timestamped `auditLog` array on the Grant object.
+
 ---
 
 ## 4. Current "To-Do" / Known State

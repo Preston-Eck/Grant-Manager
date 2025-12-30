@@ -16,91 +16,85 @@ export const HighContrastInput: React.FC<InputProps> = ({ label, className = "",
   </div>
 );
 
-// NEW: Currency Input that handles commas and allows deleting "0"
-export const HighContrastCurrencyInput: React.FC<InputProps> = ({ label, value, onChange, className = "", ...props }) => {
-    const [displayVal, setDisplayVal] = useState('');
-  
-    useEffect(() => {
-      // Sync display value if prop changes externally (and isn't currently being edited to specific partial state)
-      if (value !== undefined && value !== null) {
-          setDisplayVal(value.toLocaleString('en-US', { maximumFractionDigits: 2 }));
-      }
-    }, [value]);
-  
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value.replace(/,/g, '');
-      
-      // Allow empty string to delete "0"
-      if (raw === '') {
-        setDisplayVal('');
-        if (onChange) {
-            e.target.value = '0';
-            onChange(e);
-        }
-        return;
-      }
-  
-      if (!isNaN(Number(raw))) {
-         setDisplayVal(raw); // Keep raw for typing
-         if (onChange) {
-             e.target.value = raw; // Pass number-like string to parent
-             onChange(e);
-         }
-      }
-    };
-  
-    const handleBlur = () => {
-        // Format on blur
-        const num = parseFloat(displayVal.replace(/,/g, ''));
-        if (!isNaN(num)) {
-            setDisplayVal(num.toLocaleString('en-US', { maximumFractionDigits: 2 }));
-        }
-    };
-  
-    return (
-      <div className="flex flex-col space-y-1">
-        {label && <label className="text-sm font-semibold text-slate-700">{label}</label>}
-        <input 
-          className={`${HIGH_CONTRAST_CLASS} px-3 py-2 ${className}`}
-          value={displayVal}
-          onChange={handleChange}
-          onBlur={handleBlur}
-          inputMode="decimal"
-          {...props}
-        />
-      </div>
-    );
-};
-
-interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
-  label?: string;
-}
-
-export const HighContrastTextArea: React.FC<TextAreaProps> = ({ label, className = "", ...props }) => (
+export const HighContrastTextArea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string }> = ({ label, className = "", ...props }) => (
   <div className="flex flex-col space-y-1">
     {label && <label className="text-sm font-semibold text-slate-700">{label}</label>}
-    <textarea 
-      className={`${HIGH_CONTRAST_CLASS} px-3 py-2 ${className}`}
-      {...props}
-    />
+    <textarea className={`${HIGH_CONTRAST_CLASS} px-3 py-2 ${className}`} {...props} />
   </div>
 );
 
-interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
-  label?: string;
-  options: { value: string; label: string }[];
-}
-
-export const HighContrastSelect: React.FC<SelectProps> = ({ label, options, className = "", ...props }) => (
+export const HighContrastSelect: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label?: string, options: { value: string; label: string }[] }> = ({ label, options, className = "", ...props }) => (
   <div className="flex flex-col space-y-1">
     {label && <label className="text-sm font-semibold text-slate-700">{label}</label>}
-    <select 
-      className={`${HIGH_CONTRAST_CLASS} px-3 py-2 ${className}`}
-      {...props}
-    >
+    <select className={`${HIGH_CONTRAST_CLASS} px-3 py-2 ${className}`} {...props}>
       {options.map(opt => (
         <option key={opt.value} value={opt.value}>{opt.label}</option>
       ))}
     </select>
   </div>
 );
+
+export const HighContrastCurrencyInput: React.FC<InputProps> = ({ label, value, onChange, className = "", ...props }) => {
+    const [displayVal, setDisplayVal] = useState('');
+    const [isFocused, setIsFocused] = useState(false);
+  
+    useEffect(() => {
+      if (!isFocused && value !== undefined && value !== null) {
+          setDisplayVal(Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      }
+    }, [value, isFocused]);
+  
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const rawInput = e.target.value;
+      // Allow digits, one decimal point, and negative sign; prevent non-numeric characters
+      if (!/^-?\d*\.?\d*$/.test(rawInput.replace(/,/g, ''))) return;
+
+      setDisplayVal(rawInput); 
+
+      if (onChange) {
+         // Strip commas for the actual numeric value
+         const cleanVal = rawInput.replace(/,/g, '');
+         const num = parseFloat(cleanVal);
+         
+         const event = {
+             ...e,
+             target: { ...e.target, value: isNaN(num) ? '' : num.toString() }
+         };
+         onChange(event as any);
+      }
+    };
+  
+    const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+        setIsFocused(true);
+        const val = value ? value.toString() : '';
+        setDisplayVal(val);
+        if(props.onFocus) props.onFocus(e);
+    };
+
+    const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+        setIsFocused(false);
+        if (value !== undefined && value !== null && value !== '') {
+            setDisplayVal(Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        }
+        if(props.onBlur) props.onBlur(e);
+    };
+  
+    return (
+      <div className="flex flex-col space-y-1">
+        {label && <label className="text-sm font-semibold text-slate-700">{label}</label>}
+        <div className="relative">
+            <span className="absolute left-3 top-2 text-slate-400">$</span>
+            <input 
+              className={`${HIGH_CONTRAST_CLASS} pl-7 px-3 py-2 ${className}`}
+              value={displayVal}
+              onChange={handleChange}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              inputMode="decimal"
+              {...props}
+              type="text" 
+            />
+        </div>
+      </div>
+    );
+};

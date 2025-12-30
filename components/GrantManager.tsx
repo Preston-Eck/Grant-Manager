@@ -632,11 +632,10 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                     <h4 className="font-bold text-amber-800 mb-2">Sub-Award Pool Configuration</h4>
                                     <p className="text-sm text-amber-700 mb-4">Set the total amount reserved for community distributions. This amount is subtracted from the Unassigned Balance.</p>
                                     <div className="max-w-sm">
-                                        <HighContrastInput 
-                                            label="Total Sub-Award Allocation ($)" 
-                                            type="number"
+                                        <HighContrastCurrencyInput 
+                                            label="Total Sub-Award Allocation" 
                                             value={currentGrant.deliverables?.find(d => d.type === 'SubAward' || d.sectionReference === '0.0')?.allocatedValue || 0}
-                                            onChange={e => {
+                                            onChange={(e: any) => {
                                                 const val = parseFloat(e.target.value) || 0;
                                                 const dels = [...(currentGrant.deliverables || [])];
                                                 let subIdx = dels.findIndex(d => d.type === 'SubAward' || d.sectionReference === '0.0');

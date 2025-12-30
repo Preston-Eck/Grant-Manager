@@ -1,4 +1,4 @@
-import { Grant, Expenditure, EmailTemplate } from '../types';
+import { Grant, Expenditure, EmailTemplate, AuditEvent } from '../types';
 
 const EMPTY_STATE = {
   grants: [],
@@ -13,10 +13,8 @@ class DBService {
   private cache: any = null;
   private dbPath: string = '';
 
-  // Initialize: Check for DB path in settings
   async init(): Promise<boolean> {
-    if (!window.electronAPI) return false; // Guard for dev environment without Electron
-    
+    if (!window.electronAPI) return false;
     const settings = await window.electronAPI.getSettings();
     if (settings && settings.dbPath) {
       this.dbPath = settings.dbPath;
@@ -41,13 +39,27 @@ class DBService {
     this.dbPath = path;
     this.cache = JSON.parse(JSON.stringify(EMPTY_STATE));
     await this.save();
-    
-    // Update settings file
     const settings = await window.electronAPI.getSettings();
     await window.electronAPI.saveSettings({ ...settings, dbPath: path });
   }
 
-  // --- Accessors (Read from Cache, Write Async) ---
+  // --- Helpers ---
+  private logAudit(grantId: string, action: string, details: string) {
+      if (!this.cache) return;
+      const grant = this.cache.grants.find((g: Grant) => g.id === grantId);
+      if (grant) {
+          if (!grant.auditLog) grant.auditLog = [];
+          const event: AuditEvent = {
+              date: new Date().toISOString(),
+              user: 'System User', // In a real app, this would be the logged-in user
+              action,
+              details
+          };
+          grant.auditLog.unshift(event);
+      }
+  }
+
+  // --- Methods ---
 
   getGrants(): Grant[] { return this.cache?.grants || []; }
   getExpenditures(grantId?: string): Expenditure[] {
@@ -58,13 +70,16 @@ class DBService {
   getTemplates(): EmailTemplate[] { return this.cache?.templates || []; }
   getFullState() { return this.cache; }
 
-  // --- Mutators ---
-
   async saveGrant(grant: Grant) {
     if (!this.cache) await this.load();
     const idx = this.cache.grants.findIndex((g: Grant) => g.id === grant.id);
-    if (idx >= 0) this.cache.grants[idx] = grant;
-    else this.cache.grants.push(grant);
+    if (idx >= 0) {
+        this.cache.grants[idx] = grant;
+        this.logAudit(grant.id, 'UPDATE_GRANT', 'Updated grant details/budget');
+    } else {
+        grant.auditLog = []; // Init log
+        this.cache.grants.push(grant);
+    }
     await this.save();
   }
 
@@ -77,6 +92,7 @@ class DBService {
   async addExpenditure(tx: Expenditure) {
     if (!this.cache) await this.load();
     this.cache.expenditures.push(tx);
+    this.logAudit(tx.grantId, 'ADD_EXPENDITURE', `Added tx for $${tx.amount} to ${tx.vendor}`);
     await this.save();
   }
 
@@ -85,12 +101,17 @@ class DBService {
     const index = this.cache.expenditures.findIndex((e: Expenditure) => e.id === updated.id);
     if (index !== -1) {
       this.cache.expenditures[index] = updated;
+      this.logAudit(updated.grantId, 'UPDATE_EXPENDITURE', `Updated tx ${updated.id}`);
       await this.save();
     }
   }
 
   async deleteExpenditure(id: string) {
     if (!this.cache) return;
+    const tx = this.cache.expenditures.find((e:Expenditure) => e.id === id);
+    if(tx) {
+        this.logAudit(tx.grantId, 'DELETE_EXPENDITURE', `Deleted tx ${id} ($${tx.amount})`);
+    }
     this.cache.expenditures = this.cache.expenditures.filter((e: Expenditure) => e.id !== id);
     await this.save();
   }
