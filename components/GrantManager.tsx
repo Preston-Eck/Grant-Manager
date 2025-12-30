@@ -1,116 +1,136 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
-import { Grant, GrantStatus, Deliverable, BudgetCategory, Expenditure, SubRecipient } from '../types';
+import { Grant, GrantStatus, Deliverable, BudgetCategory, Expenditure, SubRecipient, ComplianceReport } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Users, LayoutList, ArrowLeft, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Users, LayoutList, ArrowLeft, X, FileText, Calendar } from 'lucide-react';
 import { getGrantStats, getDeliverableStats, getSubRecipientStats, getCategoryStats, getSubAwardPotStats } from '../utils/financialCalculations';
 
 interface GrantManagerProps {
   onNavigate?: (tab: string, data?: any) => void;
 }
 
-// --- Deliverables Modal Editor ---
-const DeliverablesEditor = ({ deliverables, onChange, title, readOnly = false }: { deliverables: Deliverable[], onChange: (d: Deliverable[]) => void, title?: string, readOnly?: boolean }) => {
+// --- SHARED MODAL COMPONENT ---
+const DeliverableModal = ({ 
+    del, 
+    isOpen, 
+    onClose, 
+    onSave 
+}: { 
+    del: Deliverable | null, 
+    isOpen: boolean, 
+    onClose: () => void, 
+    onSave: (d: Deliverable) => void 
+}) => {
     const [editingDel, setEditingDel] = useState<Deliverable | null>(null);
-    const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const openEdit = (del: Deliverable) => { setEditingDel({ ...del }); setIsModalOpen(true); };
-    
-    const openNew = () => {
-        setEditingDel({
-            id: crypto.randomUUID(),
-            type: 'Standard', 
-            sectionReference: '',
-            description: '',
-            allocatedValue: 0,
-            dueDate: '',
-            status: 'Pending',
-            budgetCategories: []
-        });
-        setIsModalOpen(true);
+    useEffect(() => {
+        if (del) setEditingDel({ ...del });
+    }, [del]);
+
+    if (!isOpen || !editingDel) return null;
+
+    const isSubAward = editingDel.type === 'SubAward';
+
+    const updateCat = (i: number, field: keyof BudgetCategory, val: any) => {
+        const cats = [...(editingDel.budgetCategories || [])];
+        cats[i] = { ...cats[i], [field]: val };
+        setEditingDel({ ...editingDel, budgetCategories: cats });
     };
 
-    const save = () => {
-        if (!editingDel) return;
-        const idx = deliverables.findIndex(d => d.id === editingDel.id);
-        const updated = [...deliverables];
-        if (idx >= 0) updated[idx] = editingDel; else updated.push(editingDel);
-        onChange(updated);
-        setIsModalOpen(false);
-    };
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 sticky top-0">
+                    <h3 className="text-xl font-bold text-slate-800">Edit Deliverable Details</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
+                </div>
+                
+                <div className="p-6 space-y-6">
+                    {/* Core Info */}
+                    <div className="grid grid-cols-4 gap-4">
+                        <div className="col-span-1">
+                            <HighContrastInput label="Ref (e.g. 1.1)" value={editingDel.sectionReference} onChange={e => setEditingDel({...editingDel, sectionReference: e.target.value})} />
+                        </div>
+                        <div className="col-span-3">
+                            <HighContrastInput label="Description" value={editingDel.description} onChange={e => setEditingDel({...editingDel, description: e.target.value})} />
+                        </div>
+                    </div>
 
-    const isSubAward = editingDel?.type === 'SubAward';
+                    {/* Financials & Status */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <HighContrastInput label="Allocated Value ($)" type="number" value={editingDel.allocatedValue} onChange={e => setEditingDel({...editingDel, allocatedValue: parseFloat(e.target.value) || 0})} />
+                        <HighContrastSelect 
+                            label="Status" 
+                            options={['Pending','In Progress','Completed','Deferred'].map(s=>({value:s, label:s}))} 
+                            value={editingDel.status} 
+                            onChange={e => setEditingDel({...editingDel, status: e.target.value as any})} 
+                        />
+                    </div>
 
+                    {/* Dates */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <HighContrastInput label="Start Date" type="date" value={editingDel.startDate || ''} onChange={e => setEditingDel({...editingDel, startDate: e.target.value})} />
+                        <HighContrastInput label="End Date" type="date" value={editingDel.endDate || ''} onChange={e => setEditingDel({...editingDel, endDate: e.target.value})} />
+                        <HighContrastInput label="Completion Date" type="date" value={editingDel.completionDate || ''} onChange={e => setEditingDel({...editingDel, completionDate: e.target.value})} />
+                    </div>
+
+                    {/* Budget Categories */}
+                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 className="font-bold text-xs text-slate-500 uppercase mb-3 flex justify-between items-center">
+                            <span>Budget Categories</span>
+                            {isSubAward && <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">Draws from Community Distributions</span>}
+                        </h4>
+                        
+                        {!isSubAward ? (
+                            <div className="space-y-3">
+                                {editingDel.budgetCategories?.map((cat, i) => (
+                                    <div key={cat.id} className="flex gap-2 items-center">
+                                        <div className="flex-1"><HighContrastInput placeholder="Category Name" value={cat.name} onChange={e => updateCat(i, 'name', e.target.value)} /></div>
+                                        <div className="w-24"><HighContrastInput type="number" placeholder="$" value={cat.allocation} onChange={e => updateCat(i, 'allocation', parseFloat(e.target.value) || 0)} /></div>
+                                        <div className="flex-1"><HighContrastInput placeholder="Purpose" value={cat.purpose} onChange={e => updateCat(i, 'purpose', e.target.value)} /></div>
+                                        <button onClick={() => {
+                                            const c = [...editingDel.budgetCategories]; 
+                                            c.splice(i, 1); 
+                                            setEditingDel({ ...editingDel, budgetCategories: c });
+                                        }} className="text-slate-400 hover:text-red-500"><X size={18}/></button>
+                                    </div>
+                                ))}
+                                <button onClick={() => setEditingDel({
+                                    ...editingDel,
+                                    budgetCategories: [...(editingDel.budgetCategories || []), { id: crypto.randomUUID(), name: '', allocation: 0, purpose: '' }]
+                                })} className="text-xs flex items-center text-brand-600 font-bold hover:underline mt-2">
+                                    <Plus size={14} className="mr-1"/> Add Category
+                                </button>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-slate-400 italic">Budget categories are disabled for the Sub-Award deliverable.</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 sticky bottom-0">
+                    <button onClick={onClose} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-lg">Cancel</button>
+                    <button onClick={() => onSave(editingDel)} className="px-6 py-2 bg-brand-600 text-white font-bold rounded-lg hover:bg-brand-700 shadow-md">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- SIMPLIFIED DELIVERABLES EDITOR FOR EDIT MODE ---
+const DeliverablesListEditor = ({ deliverables, onChange, title }: { deliverables: Deliverable[], onChange: (d: Deliverable[]) => void, title?: string }) => {
     return (
         <div className="space-y-4">
             {title && <h4 className="text-sm font-bold text-slate-500 uppercase border-b border-slate-200 pb-2">{title}</h4>}
-            {deliverables.map(del => (
-                <div key={del.id} className="bg-white border border-slate-200 rounded p-3 flex justify-between items-center">
-                    <div>
-                        <div className="font-bold text-sm text-slate-700">{del.sectionReference}: {del.description}</div>
-                        <div className="text-xs text-slate-500 flex gap-3">
-                            <span>Allocated: ${del.allocatedValue.toLocaleString()}</span>
-                            <span>Status: {del.status}</span>
-                        </div>
-                    </div>
-                    {!readOnly && (
-                        <div className="flex gap-1">
-                            <button onClick={() => openEdit(del)} className="p-2 bg-slate-100 rounded hover:text-brand-600"><Edit2 size={16}/></button>
-                            <button onClick={() => { if(confirm('Delete?')) onChange(deliverables.filter(d => d.id !== del.id)); }} className="p-2 bg-slate-100 rounded hover:text-red-600"><Trash2 size={16}/></button>
-                        </div>
-                    )}
-                </div>
+            {deliverables.map((del, idx) => (
+                 <div key={del.id} className="bg-slate-50 p-4 rounded border flex gap-4 items-end">
+                    <div className="w-20"><HighContrastInput label="Ref" value={del.sectionReference} onChange={e => {const d=[...deliverables]; d[idx].sectionReference=e.target.value; onChange(d)}} /></div>
+                    <div className="flex-1"><HighContrastInput label="Description" value={del.description} onChange={e => {const d=[...deliverables]; d[idx].description=e.target.value; onChange(d)}} /></div>
+                    <div className="w-32"><HighContrastInput label="Allocated ($)" type="number" value={del.allocatedValue} onChange={e => {const d=[...deliverables]; d[idx].allocatedValue=parseFloat(e.target.value)||0; onChange(d)}} /></div>
+                    <button onClick={() => {const d=[...deliverables]; d.splice(idx,1); onChange(d)}} className="text-slate-400 hover:text-red-500 mb-2"><Trash2 size={20}/></button>
+                 </div>
             ))}
-            {!readOnly && (
-                <button onClick={openNew} className="w-full py-2 border-2 border-dashed border-slate-300 rounded text-slate-500 font-bold flex justify-center items-center hover:border-brand-500 hover:text-brand-600"><Plus size={18} className="mr-2"/> Add Deliverable</button>
-            )}
-
-            {isModalOpen && editingDel && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 space-y-6 overflow-y-auto max-h-[90vh]">
-                        <div className="flex justify-between items-center border-b pb-4">
-                            <h3 className="text-xl font-bold">Edit Deliverable</h3>
-                            <button onClick={() => setIsModalOpen(false)}><X/></button>
-                        </div>
-                        <div className="grid grid-cols-4 gap-4">
-                            <div className="col-span-1"><HighContrastInput label="Ref" value={editingDel.sectionReference} onChange={e => setEditingDel({...editingDel, sectionReference: e.target.value})} /></div>
-                            <div className="col-span-3"><HighContrastInput label="Description" value={editingDel.description} onChange={e => setEditingDel({...editingDel, description: e.target.value})} /></div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <HighContrastInput label="Allocated ($)" type="number" value={editingDel.allocatedValue} onChange={e => setEditingDel({...editingDel, allocatedValue: parseFloat(e.target.value) || 0})} />
-                            <HighContrastSelect label="Status" options={['Pending','In Progress','Completed','Deferred'].map(s=>({value:s, label:s}))} value={editingDel.status} onChange={e => setEditingDel({...editingDel, status: e.target.value as any})} />
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
-                            <HighContrastInput label="Start Date" type="date" value={editingDel.startDate||''} onChange={e => setEditingDel({...editingDel, startDate: e.target.value})} />
-                            <HighContrastInput label="End Date" type="date" value={editingDel.endDate||''} onChange={e => setEditingDel({...editingDel, endDate: e.target.value})} />
-                            <HighContrastInput label="Completion" type="date" value={editingDel.completionDate||''} onChange={e => setEditingDel({...editingDel, completionDate: e.target.value})} />
-                        </div>
-                        
-                        <div className="bg-slate-50 p-4 rounded border">
-                             <h4 className="font-bold text-xs text-slate-500 uppercase mb-2">Budget Categories</h4>
-                             {isSubAward ? (
-                                 <p className="text-sm text-slate-400 italic">Disabled for Sub-Awards.</p>
-                             ) : (
-                                 <div className="space-y-2">
-                                     {editingDel.budgetCategories.map((cat, i) => (
-                                         <div key={cat.id} className="flex gap-2">
-                                             <div className="flex-1"><HighContrastInput placeholder="Name" value={cat.name} onChange={e => {const c=[...editingDel.budgetCategories]; c[i].name=e.target.value; setEditingDel({...editingDel, budgetCategories:c})}} /></div>
-                                             <div className="w-24"><HighContrastInput type="number" value={cat.allocation} onChange={e => {const c=[...editingDel.budgetCategories]; c[i].allocation=parseFloat(e.target.value)||0; setEditingDel({...editingDel, budgetCategories:c})}} /></div>
-                                             <button onClick={() => {const c=[...editingDel.budgetCategories]; c.splice(i,1); setEditingDel({...editingDel, budgetCategories:c})}}><X size={16}/></button>
-                                         </div>
-                                     ))}
-                                     <button onClick={() => setEditingDel({...editingDel, budgetCategories: [...editingDel.budgetCategories, {id:crypto.randomUUID(), name:'', allocation:0, purpose:''}]})} className="text-xs text-brand-600 font-bold">+ Add Category</button>
-                                 </div>
-                             )}
-                        </div>
-
-                        <div className="flex justify-end gap-2 pt-4 border-t">
-                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
-                            <button onClick={save} className="px-6 py-2 bg-brand-600 text-white font-bold rounded">Save</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <button onClick={() => onChange([...deliverables, {id:crypto.randomUUID(), type:'Standard', sectionReference:'', description:'', allocatedValue:0, dueDate:'', status:'Pending', budgetCategories:[]}])} className="text-brand-600 font-bold text-sm flex items-center"><Plus size={16} className="mr-1"/> Add Deliverable</button>
         </div>
     );
 };
@@ -118,19 +138,32 @@ const DeliverablesEditor = ({ deliverables, onChange, title, readOnly = false }:
 export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     const [grants, setGrants] = useState<Grant[]>([]);
     const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
+    
+    // Mode State
     const [isEditing, setIsEditing] = useState(false);
     const [currentGrant, setCurrentGrant] = useState<Partial<Grant>>({});
-    const [activeTab, setActiveTab] = useState<'details' | 'communities' | 'deliverables'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'communities' | 'deliverables' | 'reports'>('details');
 
-    // UI States for Tree View
+    // UI States
     const [expandedGrants, setExpandedGrants] = useState<Set<string>>(new Set());
     const [expandedContexts, setExpandedContexts] = useState<Set<string>>(new Set());
     const [expandedSubRecipients, setExpandedSubRecipients] = useState<Set<string>>(new Set());
     const [expandedDeliverables, setExpandedDeliverables] = useState<Set<string>>(new Set());
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
     
-    // Inline Edit State for View Mode
+    // Modal Management
+    const [modalData, setModalData] = useState<{ del: Deliverable | null, isOpen: boolean, onSave: (d: Deliverable) => void }>({
+        del: null,
+        isOpen: false,
+        onSave: () => {}
+    });
+
+    // Simple Edit Modal (Name/Alloc)
     const [editItem, setEditItem] = useState<{ type: string, id: string, name: string, amount: number, onSave: (n:string, a:number)=>void } | null>(null);
+
+    // Add Community Modal
+    const [addingCommunityTo, setAddingCommunityTo] = useState<string | null>(null);
+    const [newCommunityForm, setNewCommunityForm] = useState({ name: '', allocation: 0 });
 
     useEffect(() => { refresh(); }, []);
     const refresh = () => { setGrants(db.getGrants()); setExpenditures(db.getExpenditures()); };
@@ -148,7 +181,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
             status: 'Pending',
             budgetCategories: []
         };
-        setCurrentGrant({ id: crypto.randomUUID(), status: 'Active', totalAward: 0, deliverables: [subAwardDel], subRecipients: [] });
+        setCurrentGrant({ id: crypto.randomUUID(), status: 'Active', totalAward: 0, deliverables: [subAwardDel], subRecipients: [], reports: [] });
         setIsEditing(true);
         setActiveTab('details');
     };
@@ -164,17 +197,21 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
             await db.saveGrant(currentGrant as Grant);
             setIsEditing(false);
             refresh();
-        }
+        } else alert("Grant Name is required.");
     };
 
     const handleDeleteGrant = async (id: string, name: string) => {
-        if(confirm(`Delete ${name}?`)) {
+        if(confirm(`Delete ${name}? This cannot be undone.`)) {
             await db.deleteGrant(id);
             refresh();
         }
     };
 
-    const openEditModal = (type: string, item: any, onSave: (n:string, a:number)=>void) => {
+    const openFullDeliverableModal = (del: Deliverable, onSave: (d: Deliverable) => void) => {
+        setModalData({ del, isOpen: true, onSave });
+    };
+
+    const openSimpleEditModal = (type: string, item: any, onSave: (n:string, a:number)=>void) => {
         setEditItem({
             type,
             id: item.id,
@@ -184,21 +221,56 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
         });
     };
     
-    const saveEditItem = () => {
+    const saveSimpleEditItem = () => {
         if(editItem) {
             editItem.onSave(editItem.name, editItem.amount);
             setEditItem(null);
         }
     };
 
+    // --- Sub-Recipient Management ---
+    const openAddCommunityModal = (grantId: string) => {
+        setNewCommunityForm({ name: '', allocation: 0 });
+        setAddingCommunityTo(grantId);
+    };
+  
+    const confirmAddCommunity = async () => {
+        if (!addingCommunityTo || !newCommunityForm.name) return;
+        const grantIndex = grants.findIndex(g => g.id === addingCommunityTo);
+        if (grantIndex === -1) return;
+  
+        const grant = { ...grants[grantIndex] };
+        if (!grant.subRecipients) grant.subRecipients = [];
+  
+        const newSub: SubRecipient = {
+            id: crypto.randomUUID(),
+            name: newCommunityForm.name,
+            allocatedAmount: newCommunityForm.allocation || 0,
+            deliverables: []
+        };
+  
+        grant.subRecipients.push(newSub);
+        await db.saveGrant(grant);
+        setAddingCommunityTo(null);
+        refresh();
+    };
+
     const deleteSubRecipient = async (grant: Grant, subId: string) => {
-        if(confirm("Remove this community?")) {
+        if(confirm("Remove this community and all its data?")) {
             grant.subRecipients = grant.subRecipients.filter(s => s.id !== subId);
             await db.saveGrant(grant);
             refresh();
         }
     };
 
+    // --- Report Management ---
+    const updateReport = (idx: number, field: keyof ComplianceReport, val: any) => {
+        const r = [...(currentGrant.reports || [])];
+        r[idx] = { ...r[idx], [field]: val };
+        setCurrentGrant({ ...currentGrant, reports: r });
+    };
+
+    // --- Quick Actions ---
     const jumpToaddExpenditure = (gId: string, dId: string, cId: string, subId?: string) => {
         if(onNavigate) onNavigate('ingestion', { action: 'prefill', grantId: gId, subRecipientId: subId, deliverableId: dId, categoryId: cId });
     };
@@ -210,8 +282,11 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
         
         const del = targetDels?.find(d => d.id === dId);
         if(del) {
-            if(del.type === 'SubAward') return alert("Cannot add categories to Sub-Award.");
-            del.budgetCategories.push({id: crypto.randomUUID(), name: 'New Cat', allocation: 0, purpose: ''});
+            if(del.type === 'SubAward' || del.sectionReference === '0.0') return alert("Cannot add categories to Sub-Award.");
+            
+            if (!del.budgetCategories) del.budgetCategories = []; 
+            del.budgetCategories.push({id: crypto.randomUUID(), name: 'New Category', allocation: 0, purpose: ''});
+            
             await db.saveGrant(grant);
             refresh();
             setExpandedDeliverables(prev => new Set(prev).add(dId));
@@ -234,76 +309,244 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
         refresh();
     };
 
+    const getChildrenStatusSummary = (deliverables: Deliverable[]) => {
+        if (!deliverables || deliverables.length === 0) return "No deliverables";
+        const counts = deliverables.reduce((acc, curr) => {
+            acc[curr.status] = (acc[curr.status] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+        return Object.entries(counts).map(([s, c]) => `${c} ${s}`).join(', ');
+    };
+
+    // --- RENDERERS ---
+    const renderDeliverableNode = (grant: Grant, del: Deliverable, subRecipientId?: string) => {
+        const dStats = getDeliverableStats(del, expenditures);
+        const isDelExpanded = expandedDeliverables.has(del.id);
+
+        return (
+            <div key={del.id} className="border-b border-slate-100 last:border-0 bg-white">
+                <div className="p-3 pl-8 flex items-center justify-between hover:bg-slate-50 cursor-pointer" onClick={() => toggle(del.id, setExpandedDeliverables)}>
+                    <div className="flex items-center space-x-3">
+                        {isDelExpanded ? <ChevronDown size={16} className="text-slate-400"/> : <ChevronRight size={16} className="text-slate-400"/>}
+                        <div>
+                            <div className="flex items-center space-x-2">
+                                <span className="font-semibold text-sm text-slate-700">{del.sectionReference}: {del.description}</span>
+                                
+                                {/* Status Dropdown */}
+                                <select
+                                    value={del.status}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={async (e) => {
+                                        del.status = e.target.value as any;
+                                        await db.saveGrant(grant);
+                                        refresh();
+                                    }}
+                                    className={`text-[10px] px-2 py-0.5 rounded-full border-0 cursor-pointer focus:ring-1 focus:ring-brand-500 font-bold uppercase ml-2 ${
+                                        del.status === 'Completed' ? 'bg-green-100 text-green-700' : 
+                                        del.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-amber-100 text-amber-700'
+                                    }`}
+                                >
+                                    {['Pending', 'In Progress', 'Completed', 'Deferred'].map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </div>
+                            <div className="text-xs text-slate-400 flex space-x-3">
+                                <span>Allocated: ${del.allocatedValue.toLocaleString()}</span>
+                                <span>Spent: ${dStats.spent.toLocaleString()}</span>
+                                <span className={dStats.remaining < -0.01 ? 'text-red-600 font-bold' : 'text-green-600'}>Remaining: ${dStats.remaining.toLocaleString()}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Actions */}
+                    <div className="flex space-x-1 ml-auto">
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                openFullDeliverableModal(del, async (updatedDel) => {
+                                    if (subRecipientId) {
+                                        const sub = grant.subRecipients.find(s => s.id === subRecipientId);
+                                        if (sub) {
+                                            const idx = sub.deliverables.findIndex(d => d.id === del.id);
+                                            if (idx !== -1) sub.deliverables[idx] = updatedDel;
+                                        }
+                                    } else {
+                                        const idx = grant.deliverables.findIndex(d => d.id === del.id);
+                                        if (idx !== -1) grant.deliverables[idx] = updatedDel;
+                                    }
+                                    await db.saveGrant(grant);
+                                    refresh();
+                                    setModalData({ ...modalData, isOpen: false });
+                                });
+                            }} 
+                            className="p-1 text-slate-300 hover:text-brand-600"
+                        >
+                            <Edit2 size={14} />
+                        </button>
+                        <button 
+                            onClick={async (e) => {
+                                e.stopPropagation();
+                                if(window.confirm("Delete deliverable?")) {
+                                    if (subRecipientId) {
+                                        const sub = grant.subRecipients.find(s => s.id === subRecipientId);
+                                        if (sub) sub.deliverables = sub.deliverables.filter(d => d.id !== del.id);
+                                    } else {
+                                        grant.deliverables = grant.deliverables.filter(d => d.id !== del.id);
+                                    }
+                                    await db.saveGrant(grant);
+                                    refresh();
+                                }
+                            }} 
+                            className="p-1 text-slate-300 hover:text-red-500"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    </div>
+                </div>
+
+                {isDelExpanded && (
+                    <div className="bg-slate-50/50 pl-16 pr-4 py-2 border-t border-slate-100">
+                        {del.budgetCategories?.map((cat) => {
+                            const cStats = getCategoryStats(cat.id, del.id, expenditures);
+                            return (
+                                <div key={cat.id} className="mb-2 flex justify-between items-center text-sm py-1 border-b border-slate-100 last:border-0">
+                                    <div className="flex items-center">
+                                        <span className="font-medium text-slate-600 mr-2">{cat.name}</span>
+                                        <span className="text-xs text-slate-400">(${cat.allocation.toLocaleString()})</span>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-xs text-slate-500">Spent: ${cStats.spent.toLocaleString()}</span>
+                                        <button onClick={() => jumpToaddExpenditure(grant.id, del.id, cat.id, subRecipientId)} className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded hover:bg-brand-200">+ Exp</button>
+                                        <button onClick={() => openSimpleEditModal('cat', cat, async (n,a) => { cat.name=n; cat.allocation=a; await db.saveGrant(grant); refresh(); })} className="text-slate-300 hover:text-brand-600 ml-1"><Edit2 size={12}/></button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {(del.type !== 'SubAward' && del.sectionReference !== '0.0') && (
+                            <button onClick={() => quickAddCategory(grant, del.id, subRecipientId)} className="text-xs text-slate-400 hover:text-brand-600 flex items-center mt-2">
+                                <Plus size={12} className="mr-1"/> Add Budget Category
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     if (isEditing) {
         return (
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <button onClick={() => setIsEditing(false)} className="flex items-center text-slate-500 font-bold"><ArrowLeft className="mr-2"/> Back</button>
-                    <button onClick={handleSave} className="bg-brand-600 text-white px-6 py-2 rounded font-bold flex items-center"><Save className="mr-2"/> Save</button>
+                    <button onClick={() => setIsEditing(false)} className="flex items-center text-slate-500 font-bold hover:text-slate-700"><ArrowLeft className="mr-2"/> Back to Portfolio</button>
+                    <button onClick={handleSave} className="bg-brand-600 text-white px-6 py-2 rounded-lg font-bold flex items-center hover:bg-brand-700 shadow-sm"><Save className="mr-2"/> Save Changes</button>
                 </div>
-                <div className="bg-white rounded-xl shadow overflow-hidden">
+                <div className="bg-white rounded-xl shadow overflow-hidden border border-slate-200">
                     <div className="flex border-b bg-slate-50">
-                        {['details','communities','deliverables'].map(t => (
-                            <button key={t} onClick={() => setActiveTab(t as any)} className={`px-6 py-3 font-bold uppercase text-sm ${activeTab===t ? 'text-brand-600 border-b-2 border-brand-600 bg-white' : 'text-slate-500'}`}>{t}</button>
+                        {['details','communities','deliverables','reports'].map(t => (
+                            <button key={t} onClick={() => setActiveTab(t as any)} className={`px-6 py-3 font-bold uppercase text-sm transition-colors ${activeTab===t ? 'text-brand-600 border-b-2 border-brand-600 bg-white' : 'text-slate-500 hover:bg-slate-100'}`}>{t}</button>
                         ))}
                     </div>
                     <div className="p-6">
                         {activeTab === 'details' && (
-                            <div className="space-y-4 max-w-2xl">
-                                <HighContrastInput label="Name" value={currentGrant.name} onChange={e => setCurrentGrant({...currentGrant, name: e.target.value})} />
+                            <div className="space-y-6 max-w-2xl">
+                                <HighContrastInput label="Grant Name" value={currentGrant.name} onChange={e => setCurrentGrant({...currentGrant, name: e.target.value})} />
+                                <HighContrastInput label="Funder" value={currentGrant.funder} onChange={e => setCurrentGrant({...currentGrant, funder: e.target.value})} />
                                 <div className="grid grid-cols-2 gap-4">
                                     <HighContrastInput type="number" label="Total Award" value={currentGrant.totalAward} onChange={e => setCurrentGrant({...currentGrant, totalAward: parseFloat(e.target.value)||0})} />
                                     <HighContrastSelect label="Status" options={['Draft','Active','Closed'].map(s => ({value:s, label:s}))} value={currentGrant.status} onChange={e => setCurrentGrant({...currentGrant, status: e.target.value as any})} />
                                 </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                   <HighContrastInput type="date" label="Start Date" value={currentGrant.startDate || ''} onChange={e => setCurrentGrant({...currentGrant, startDate: e.target.value})} />
+                                   <HighContrastInput type="date" label="End Date" value={currentGrant.endDate || ''} onChange={e => setCurrentGrant({...currentGrant, endDate: e.target.value})} />
+                                 </div>
                             </div>
                         )}
                         {activeTab === 'communities' && (
-                            <div className="space-y-4">
+                            <div className="space-y-6">
+                                <div className="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm border border-blue-100">
+                                  Manage sub-recipients here. You can assign specific deliverables and budgets to each community partner.
+                                </div>
                                 {currentGrant.subRecipients?.map((sub, i) => (
-                                    <div key={sub.id} className="border p-4 rounded bg-slate-50 relative">
-                                        <button onClick={() => { const s = [...(currentGrant.subRecipients||[])]; s.splice(i,1); setCurrentGrant({...currentGrant, subRecipients:s}) }} className="absolute top-2 right-2"><X/></button>
+                                    <div key={sub.id} className="border border-slate-200 p-4 rounded-lg bg-slate-50 relative">
+                                        <button onClick={() => { const s = [...(currentGrant.subRecipients||[])]; s.splice(i,1); setCurrentGrant({...currentGrant, subRecipients:s}) }} className="absolute top-2 right-2 text-slate-400 hover:text-red-500"><X/></button>
                                         <div className="grid grid-cols-2 gap-4 mb-4">
-                                            <HighContrastInput label="Name" value={sub.name} onChange={e => { const s = [...(currentGrant.subRecipients||[])]; s[i].name=e.target.value; setCurrentGrant({...currentGrant, subRecipients:s}) }} />
-                                            <HighContrastInput label="Allocation" type="number" value={sub.allocatedAmount} onChange={e => { const s = [...(currentGrant.subRecipients||[])]; s[i].allocatedAmount=parseFloat(e.target.value)||0; setCurrentGrant({...currentGrant, subRecipients:s}) }} />
+                                            <HighContrastInput label="Community Name" value={sub.name} onChange={e => { const s = [...(currentGrant.subRecipients||[])]; s[i].name=e.target.value; setCurrentGrant({...currentGrant, subRecipients:s}) }} />
+                                            <HighContrastInput label="Allocated Amount ($)" type="number" value={sub.allocatedAmount} onChange={e => { const s = [...(currentGrant.subRecipients||[])]; s[i].allocatedAmount=parseFloat(e.target.value)||0; setCurrentGrant({...currentGrant, subRecipients:s}) }} />
                                         </div>
-                                        <DeliverablesEditor 
-                                            title="Community Deliverables" 
-                                            deliverables={sub.deliverables} 
-                                            onChange={d => { const s = [...(currentGrant.subRecipients||[])]; s[i].deliverables=d; setCurrentGrant({...currentGrant, subRecipients:s}) }}
-                                        />
+                                        {/* RE-USE DELIVERABLES EDITOR BUT WITH SUB CONTEXT */}
+                                        <div className="bg-white p-4 rounded border border-slate-200">
+                                            <DeliverablesListEditor 
+                                                title={`Deliverables for ${sub.name}`}
+                                                deliverables={sub.deliverables}
+                                                onChange={d => {
+                                                    const s = [...(currentGrant.subRecipients||[])];
+                                                    s[i].deliverables = d;
+                                                    setCurrentGrant({...currentGrant, subRecipients:s});
+                                                }}
+                                            />
+                                        </div>
                                     </div>
                                 ))}
-                                <button onClick={() => setCurrentGrant({...currentGrant, subRecipients: [...(currentGrant.subRecipients||[]), {id:crypto.randomUUID(), name:'New Community', allocatedAmount:0, deliverables:[]}]})} className="text-brand-600 font-bold">+ Add Community</button>
+                                <button onClick={() => setCurrentGrant({...currentGrant, subRecipients: [...(currentGrant.subRecipients||[]), {id:crypto.randomUUID(), name:'New Community', allocatedAmount:0, deliverables:[]}]})} className="w-full py-3 bg-white border-2 border-dashed border-slate-300 text-slate-500 font-bold rounded-xl flex justify-center items-center hover:border-brand-500 hover:text-brand-600 transition-colors"><Plus size={20} className="mr-2"/> Add Sub-Recipient Community</button>
                             </div>
                         )}
                         {activeTab === 'deliverables' && (
                              <div className="space-y-8">
-                                <DeliverablesEditor 
-                                    title="Primary Grant Deliverables" 
-                                    deliverables={(currentGrant.deliverables || []).filter(d => d.type !== 'SubAward')} 
-                                    onChange={updated => {
-                                        const subAward = currentGrant.deliverables?.find(d => d.type === 'SubAward');
-                                        const newDels = subAward ? [...updated, subAward] : updated;
-                                        setCurrentGrant({...currentGrant, deliverables: newDels});
-                                    }}
-                                />
-                                <div className="bg-slate-50 p-4 border rounded">
-                                    <h4 className="font-bold text-slate-700 mb-2">Sub-Award Pool Configuration</h4>
-                                    <p className="text-sm text-slate-500 mb-4">Total amount set aside for community distributions.</p>
-                                    <HighContrastInput 
-                                        label="Total Sub-Award Allocation" 
-                                        type="number"
-                                        value={currentGrant.deliverables?.find(d => d.type === 'SubAward')?.allocatedValue || 0}
-                                        onChange={e => {
-                                            const val = parseFloat(e.target.value) || 0;
-                                            const dels = [...(currentGrant.deliverables || [])];
-                                            const idx = dels.findIndex(d => d.type === 'SubAward');
-                                            if (idx >= 0) dels[idx].allocatedValue = val;
-                                            setCurrentGrant({...currentGrant, deliverables: dels});
+                                <div className="space-y-4">
+                                    {/* Using the List Editor for better layout in Edit Mode */}
+                                    <DeliverablesListEditor
+                                        title="Primary Grant Deliverables"
+                                        deliverables={(currentGrant.deliverables || []).filter(d => d.type !== 'SubAward')}
+                                        onChange={updated => {
+                                            const subAward = currentGrant.deliverables?.find(d => d.type === 'SubAward');
+                                            const newDels = subAward ? [...updated, subAward] : updated;
+                                            setCurrentGrant({...currentGrant, deliverables: newDels});
                                         }}
                                     />
                                 </div>
+                                
+                                <div className="bg-amber-50 p-6 border border-amber-200 rounded-xl">
+                                    <h4 className="font-bold text-amber-800 mb-2">Sub-Award Pool Configuration</h4>
+                                    <p className="text-sm text-amber-700 mb-4">Set the total amount reserved for community distributions. This amount is subtracted from the Unassigned Balance.</p>
+                                    <div className="max-w-sm">
+                                        <HighContrastInput 
+                                            label="Total Sub-Award Allocation ($)" 
+                                            type="number"
+                                            value={currentGrant.deliverables?.find(d => d.type === 'SubAward' || d.sectionReference === '0.0')?.allocatedValue || 0}
+                                            onChange={e => {
+                                                const val = parseFloat(e.target.value) || 0;
+                                                const dels = [...(currentGrant.deliverables || [])];
+                                                let subIdx = dels.findIndex(d => d.type === 'SubAward' || d.sectionReference === '0.0');
+                                                
+                                                if (subIdx >= 0) {
+                                                    dels[subIdx].allocatedValue = val;
+                                                } else {
+                                                    dels.push({
+                                                        id: crypto.randomUUID(), type: 'SubAward', sectionReference: '0.0', description: 'Sub-Award Pool',
+                                                        allocatedValue: val, dueDate: '', status: 'Pending', budgetCategories: []
+                                                    });
+                                                }
+                                                setCurrentGrant({...currentGrant, deliverables: dels});
+                                            }}
+                                        />
+                                    </div>
+                                </div>
                              </div>
+                        )}
+                        {activeTab === 'reports' && (
+                            <div className="space-y-4">
+                                {currentGrant.reports?.map((rep, idx) => (
+                                    <div key={rep.id} className="flex gap-4 items-end bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                        <div className="flex-1"><HighContrastInput label="Report Title" value={rep.title} onChange={e => updateReport(idx, 'title', e.target.value)} /></div>
+                                        <div className="w-40"><HighContrastInput type="date" label="Due Date" value={rep.dueDate} onChange={e => updateReport(idx, 'dueDate', e.target.value)} /></div>
+                                        <div className="w-40"><HighContrastSelect label="Status" options={[{value:'Pending',label:'Pending'},{value:'Submitted',label:'Submitted'}]} value={rep.status} onChange={e => updateReport(idx, 'status', e.target.value)} /></div>
+                                        <button onClick={() => { const r = [...(currentGrant.reports||[])]; r.splice(idx,1); setCurrentGrant({...currentGrant, reports: r}); }} className="text-red-500 p-2 hover:bg-red-50 rounded"><Trash2 size={20}/></button>
+                                    </div>
+                                ))}
+                                <button onClick={() => setCurrentGrant({...currentGrant, reports: [...(currentGrant.reports || []), { id: crypto.randomUUID(), title: '', dueDate: '', type: 'Financial', status: 'Pending' }]})} className="flex items-center font-bold text-brand-600 hover:bg-brand-50 px-4 py-2 rounded">
+                                    <Plus size={20} className="mr-2"/> Add Compliance Report
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -313,10 +556,11 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between">
-                <h2 className="text-2xl font-bold">Grant Portfolio</h2>
-                <button onClick={handleAddNew} className="bg-brand-600 text-white px-4 py-2 rounded font-bold flex items-center"><Plus className="mr-2"/> Add Grant</button>
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-slate-900">Grant Portfolio</h2>
+                <button onClick={handleAddNew} className="bg-brand-600 text-white px-4 py-2 rounded-lg font-bold flex items-center hover:bg-brand-700 shadow-sm"><Plus className="mr-2"/> Add Grant</button>
             </div>
+            
             <div className="space-y-4">
                 {grants.map(grant => {
                     const stats = getGrantStats(grant, expenditures);
@@ -324,142 +568,87 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                     const isExpanded = expandedGrants.has(grant.id);
 
                     return (
-                        <div key={grant.id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
-                             <div className="p-4 flex items-center cursor-pointer hover:bg-slate-50" onClick={() => toggle(grant.id, setExpandedGrants)}>
+                        <div key={grant.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                             <div className="p-4 flex items-center cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => toggle(grant.id, setExpandedGrants)}>
                                  {isExpanded ? <ChevronDown className="mr-3 text-slate-400"/> : <ChevronRight className="mr-3 text-slate-400"/>}
                                  <div className="flex-1">
-                                     <h3 className="font-bold text-lg">{grant.name}</h3>
-                                     <div className="text-xs text-slate-500 flex gap-4">
-                                         <span>Award: ${grant.totalAward.toLocaleString()}</span>
+                                     <h3 className="font-bold text-lg text-slate-800">{grant.name}</h3>
+                                     <div className="text-xs text-slate-500 flex gap-4 mt-1">
+                                         <span>Award: <strong className="text-slate-700">${grant.totalAward.toLocaleString()}</strong></span>
                                          <span>Spent: ${stats.totalSpent.toLocaleString()}</span>
-                                         <span className={stats.unassigned < 0 ? 'text-red-600 font-bold' : ''}>Unassigned: ${stats.unassigned.toLocaleString()}</span>
+                                         {/* Only red if truly negative */}
+                                         <span className={stats.unassigned < -0.01 ? 'text-red-600 font-bold' : ''}>Unassigned: ${stats.unassigned.toLocaleString()}</span>
                                      </div>
                                  </div>
                                  <div className="flex items-center gap-2">
                                      <select 
-                                        className="text-xs uppercase font-bold border rounded px-2 py-1"
+                                        className="text-xs uppercase font-bold border rounded px-2 py-1 bg-white text-slate-600 focus:ring-1 focus:ring-brand-500"
                                         value={grant.status} 
                                         onClick={e => e.stopPropagation()} 
                                         onChange={async e => { const g={...grant, status:e.target.value as any}; await db.saveGrant(g); refresh(); }}
                                      >
                                          {['Active','Pending','Closed'].map(s => <option key={s} value={s}>{s}</option>)}
                                      </select>
-                                     <button onClick={e => {e.stopPropagation(); handleEdit(grant)}} className="p-2 text-slate-400 hover:text-brand-600"><Edit2 size={18}/></button>
-                                     <button onClick={e => {e.stopPropagation(); handleDeleteGrant(grant.id, grant.name)}} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={18}/></button>
+                                     <div className="border-l pl-2 ml-2 flex gap-1">
+                                        <button onClick={e => {e.stopPropagation(); handleEdit(grant)}} className="p-2 text-slate-400 hover:text-brand-600"><Edit2 size={18}/></button>
+                                        <button onClick={e => {e.stopPropagation(); handleDeleteGrant(grant.id, grant.name)}} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={18}/></button>
+                                     </div>
                                  </div>
                              </div>
 
                              {isExpanded && (
-                                 <div className="border-t bg-slate-50/50">
-                                     {/* Primary Deliverables */}
-                                     <div className="p-2 pl-4 border-b">
+                                 <div className="border-t border-slate-200 bg-slate-50/30">
+                                     <div className="p-2 pl-4 border-b border-slate-200">
                                          <div className="flex justify-between items-center mb-2 px-2 pt-2">
-                                            <div className="font-bold text-xs text-slate-500 uppercase">Primary Deliverables</div>
-                                            <button onClick={() => quickAddDeliverable(grant)} className="text-xs text-brand-600 font-bold flex items-center"><Plus size={12}/> Add</button>
+                                            <div className="font-bold text-xs text-slate-500 uppercase tracking-wide">Primary Deliverables</div>
+                                            <button onClick={() => quickAddDeliverable(grant)} className="text-xs text-brand-600 font-bold flex items-center hover:underline"><Plus size={12} className="mr-1"/> Add</button>
                                          </div>
-                                         {grant.deliverables.filter(d => d.type !== 'SubAward').map(del => {
-                                             const dStat = getDeliverableStats(del, expenditures);
-                                             const isDelExpanded = expandedDeliverables.has(del.id);
-                                             return (
-                                                 <div key={del.id} className="mb-2">
-                                                     <div className="flex justify-between items-center p-2 bg-white border rounded hover:bg-slate-50 cursor-pointer" onClick={() => toggle(del.id, setExpandedDeliverables)}>
-                                                        <div className="flex items-center gap-2">
-                                                            {isDelExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
-                                                            <div className="text-sm font-medium">{del.sectionReference}: {del.description}</div>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-xs">
-                                                            <span>${dStat.spent.toLocaleString()} / ${del.allocatedValue.toLocaleString()}</span>
-                                                            <select 
-                                                                className="border rounded px-1 py-0.5"
-                                                                value={del.status} 
-                                                                onClick={e => e.stopPropagation()}
-                                                                onChange={async e => { 
-                                                                    del.status = e.target.value as any; 
-                                                                    await db.saveGrant(grant); 
-                                                                    refresh(); 
-                                                                }}
-                                                            >
-                                                                {['Pending','In Progress','Completed'].map(s => <option key={s} value={s}>{s}</option>)}
-                                                            </select>
-                                                            <button onClick={e => {e.stopPropagation(); openEditModal('del', del, async (n,a) => {del.description=n; del.allocatedValue=a; await db.saveGrant(grant); refresh();})}} className="text-slate-400 hover:text-brand-600"><Edit2 size={14}/></button>
-                                                        </div>
+                                         {grant.deliverables.filter(d => d.type !== 'SubAward' && d.sectionReference !== '0.0').map(del => renderDeliverableNode(grant, del))}
+                                     </div>
+
+                                     <div className="p-3 pl-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center cursor-pointer hover:bg-blue-100" onClick={() => toggle(`${grant.id}-comm`, setExpandedContexts)}>
+                                         <div className="flex items-center gap-2">
+                                            {expandedContexts.has(`${grant.id}-comm`) ? <ChevronDown size={14} className="text-blue-400"/> : <ChevronRight size={14} className="text-blue-400"/>}
+                                            <Users size={16} className="text-blue-600"/>
+                                            <span className="font-bold text-xs text-blue-800 uppercase">Community Distributions</span>
+                                         </div>
+                                         <div className="text-[10px] text-blue-700 flex gap-3 items-center mr-4">
+                                             <span>Pool: ${subAwardStats.totalPot.toLocaleString()}</span>
+                                             <span>Allocated: ${subAwardStats.allocated.toLocaleString()}</span>
+                                             <span className={subAwardStats.remainingToAllocate < -0.01 ? 'text-red-600 font-bold' : 'font-bold'}>Remaining: ${subAwardStats.remainingToAllocate.toLocaleString()}</span>
+                                             <button onClick={async e => {e.stopPropagation(); openAddCommunityModal(grant.id); }} className="bg-white border border-blue-200 rounded p-1 hover:text-blue-900 hover:border-blue-400"><Plus size={14}/></button>
+                                         </div>
+                                     </div>
+
+                                     {expandedContexts.has(`${grant.id}-comm`) && (
+                                         <div className="p-2 pl-8 space-y-2">
+                                             {grant.subRecipients.map(sub => (
+                                                 <div key={sub.id} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                                                     <div className="p-3 flex justify-between items-center hover:bg-slate-50 cursor-pointer" onClick={() => toggle(sub.id, setExpandedSubRecipients)}>
+                                                         <div className="flex items-center gap-2">
+                                                             {expandedSubRecipients.has(sub.id) ? <ChevronDown size={14} className="text-slate-400"/> : <ChevronRight size={14} className="text-slate-400"/>}
+                                                             <span className="font-bold text-sm text-slate-700">{sub.name}</span>
+                                                             <span className="text-xs text-slate-400 ml-2">({getChildrenStatusSummary(sub.deliverables)})</span>
+                                                         </div>
+                                                         <div className="flex items-center gap-3">
+                                                             <span className="text-xs text-slate-500">Allocated: ${sub.allocatedAmount.toLocaleString()}</span>
+                                                             <button onClick={e => {e.stopPropagation(); openSimpleEditModal('sub', sub, async(n,a)=>{sub.name=n; sub.allocatedAmount=a; await db.saveGrant(grant); refresh();})}} className="text-slate-400 hover:text-brand-600"><Edit2 size={14}/></button>
+                                                             <button onClick={e => {e.stopPropagation(); deleteSubRecipient(grant, sub.id)}} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></button>
+                                                         </div>
                                                      </div>
-                                                     {isDelExpanded && (
-                                                         <div className="pl-8 pr-2 py-2">
-                                                             {del.budgetCategories.map(cat => {
-                                                                 const cStat = getCategoryStats(cat.id, del.id, expenditures);
-                                                                 return (
-                                                                     <div key={cat.id} className="flex justify-between text-xs py-1 border-b border-slate-100 last:border-0">
-                                                                         <span>{cat.name}</span>
-                                                                         <div className="flex gap-2">
-                                                                             <span className="text-slate-500">${cStat.spent.toLocaleString()} / ${cat.allocation.toLocaleString()}</span>
-                                                                             <button onClick={()=>jumpToaddExpenditure(grant.id, del.id, cat.id)} className="text-brand-600 font-bold">+ Exp</button>
-                                                                             <button onClick={()=>openEditModal('cat', cat, async(n,a)=>{cat.name=n;cat.allocation=a; await db.saveGrant(grant); refresh();})}><Edit2 size={12}/></button>
-                                                                         </div>
-                                                                     </div>
-                                                                 );
-                                                             })}
-                                                             <button onClick={() => quickAddCategory(grant, del.id)} className="text-xs text-slate-400 mt-1 hover:text-brand-600 flex items-center"><Plus size={12}/> Add Category</button>
+                                                     {expandedSubRecipients.has(sub.id) && (
+                                                         <div className="pl-4 border-t border-slate-100 bg-slate-50">
+                                                             {sub.deliverables.map(del => renderDeliverableNode(grant, del, sub.id))}
+                                                             <div className="p-2">
+                                                                 <button onClick={() => quickAddDeliverable(grant, sub.id)} className="text-xs text-slate-500 hover:text-brand-600 flex items-center font-medium"><Plus size={12} className="mr-1"/> Add Community Goal</button>
+                                                             </div>
                                                          </div>
                                                      )}
                                                  </div>
-                                             );
-                                         })}
-                                     </div>
-
-                                     {/* Community Distributions Header */}
-                                     <div className="p-2 pl-4 bg-blue-50 border-b flex justify-between items-center">
-                                         <div className="flex items-center gap-2">
-                                             <Users size={16} className="text-blue-600"/>
-                                             <span className="font-bold text-xs text-blue-800 uppercase">Community Distributions</span>
+                                             ))}
+                                             {grant.subRecipients.length === 0 && <div className="text-xs text-slate-400 italic p-2 text-center">No communities added yet.</div>}
                                          </div>
-                                         <div className="text-[10px] text-blue-700 flex gap-3 items-center">
-                                             <span>Pool: ${subAwardStats.totalPot.toLocaleString()}</span>
-                                             <span>Allocated: ${subAwardStats.allocated.toLocaleString()}</span>
-                                             <span className={subAwardStats.remainingToAllocate < 0 ? 'text-red-600 font-bold' : 'font-bold'}>Remaining: ${subAwardStats.remainingToAllocate.toLocaleString()}</span>
-                                             <button onClick={async e => {e.stopPropagation(); if(confirm("Add Community?")){grant.subRecipients.push({id:crypto.randomUUID(), name:'New', allocatedAmount:0, deliverables:[]}); await db.saveGrant(grant); refresh();}}} className="bg-white border border-blue-200 rounded px-2 hover:text-blue-900">+</button>
-                                         </div>
-                                     </div>
-
-                                     {/* Sub Recipients List */}
-                                     <div className="p-2 pl-8">
-                                         {grant.subRecipients.map(sub => (
-                                             <div key={sub.id} className="mb-2 bg-white border rounded p-3">
-                                                 <div className="flex justify-between mb-2 items-center">
-                                                     <div className="flex items-center gap-2">
-                                                         <span className="font-bold text-sm">{sub.name}</span>
-                                                         <button onClick={()=>openEditModal('sub', sub, async(n,a)=>{sub.name=n; sub.allocatedAmount=a; await db.saveGrant(grant); refresh();})} className="text-slate-400 hover:text-brand-600"><Edit2 size={14}/></button>
-                                                     </div>
-                                                     <div className="flex items-center gap-3">
-                                                         <span className="text-xs text-slate-500">Allocated: ${sub.allocatedAmount.toLocaleString()}</span>
-                                                         <button onClick={()=>deleteSubRecipient(grant, sub.id)} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button>
-                                                     </div>
-                                                 </div>
-                                                 <div className="pl-2 border-l-2 border-slate-200">
-                                                     {sub.deliverables.map(sd => (
-                                                         <div key={sd.id} className="flex justify-between text-xs py-1 items-center">
-                                                             <span>{sd.description}</span>
-                                                             <div className="flex items-center gap-2">
-                                                                 <select 
-                                                                    className="border rounded px-1"
-                                                                    value={sd.status}
-                                                                    onChange={async e => {
-                                                                        sd.status = e.target.value as any;
-                                                                        await db.saveGrant(grant);
-                                                                        refresh();
-                                                                    }}
-                                                                 >
-                                                                     {['Pending','In Progress','Completed'].map(s=><option key={s} value={s}>{s}</option>)}
-                                                                 </select>
-                                                                 <button onClick={()=>quickAddCategory(grant, sd.id, sub.id)} className="text-brand-600">+ Cat</button>
-                                                             </div>
-                                                         </div>
-                                                     ))}
-                                                     <button onClick={()=>quickAddDeliverable(grant, sub.id)} className="text-xs text-slate-400 mt-1 hover:text-brand-600 flex items-center"><Plus size={12}/> Add Goal</button>
-                                                 </div>
-                                             </div>
-                                         ))}
-                                     </div>
+                                     )}
                                  </div>
                              )}
                         </div>
@@ -467,16 +656,37 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                 })}
             </div>
             
-            {/* INLINE EDIT MODAL */}
+            {/* GLOBAL MODALS */}
+            <DeliverableModal 
+                del={modalData.del} 
+                isOpen={modalData.isOpen} 
+                onClose={() => setModalData({ ...modalData, isOpen: false })} 
+                onSave={modalData.onSave} 
+            />
+
+            {/* SIMPLE EDIT MODAL */}
             {editItem && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-                    <div className="bg-white rounded p-6 w-full max-w-sm space-y-4">
-                        <h3 className="font-bold text-lg">Edit {editItem.type === 'cat' ? 'Category' : editItem.type === 'sub' ? 'Recipient' : 'Deliverable'}</h3>
+                    <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-sm space-y-4">
+                        <h3 className="font-bold text-lg text-slate-800">Edit {editItem.type === 'cat' ? 'Category' : editItem.type === 'sub' ? 'Recipient' : 'Item'}</h3>
                         <HighContrastInput label="Name" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} autoFocus />
                         <HighContrastInput label="Allocation ($)" type="number" value={editItem.amount} onChange={e => setEditItem({...editItem, amount: parseFloat(e.target.value)||0})} />
                         <div className="flex gap-2 pt-2">
-                            <button onClick={() => setEditItem(null)} className="flex-1 bg-slate-100 py-2 rounded">Cancel</button>
-                            <button onClick={saveEditItem} className="flex-1 bg-brand-600 text-white py-2 rounded">Save</button>
+                            <button onClick={() => setEditItem(null)} className="flex-1 bg-slate-100 text-slate-600 py-2 rounded-lg font-bold hover:bg-slate-200">Cancel</button>
+                            <button onClick={saveSimpleEditItem} className="flex-1 bg-brand-600 text-white py-2 rounded-lg font-bold hover:bg-brand-700">Save</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {addingCommunityTo && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setAddingCommunityTo(null)}>
+                    <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-bold text-slate-900 mb-4">Add Sub-Recipient</h3>
+                        <div className="space-y-4">
+                            <HighContrastInput label="Community Name" value={newCommunityForm.name} onChange={e => setNewCommunityForm({...newCommunityForm, name: e.target.value})} autoFocus />
+                            <HighContrastInput label="Allocation ($)" type="number" value={newCommunityForm.allocation} onChange={e => setNewCommunityForm({...newCommunityForm, allocation: parseFloat(e.target.value)||0})} />
+                            <button onClick={confirmAddCommunity} className="w-full bg-brand-600 text-white font-bold py-2 rounded-lg hover:bg-brand-700">Add Community</button>
                         </div>
                     </div>
                 </div>
