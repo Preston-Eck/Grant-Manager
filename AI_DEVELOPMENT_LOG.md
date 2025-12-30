@@ -43,6 +43,10 @@
 * **Solution:** * Inputs: `onChange={e => setField(safeParseFloat(e.target.value))}`.
     * Display: `{(value || 0).toLocaleString()}`. Always fallback to `0`.
 
+### E. Financial Math & Display
+* **Issue:** Balances showing as `-0.00` in red due to floating point errors (e.g., -0.000000001).
+* **Solution:** When styling negative numbers (red text), use a tolerance check: `value < -0.01` instead of `value < 0`.
+
 ---
 
 ## 3. Change Log & Feature History
@@ -70,9 +74,21 @@
 * **Problem:** Syntax error (missing `}`) in `GrantManager.tsx` caused the component to crash.
 * **Fix:** Audit of all closing braces and moved `DeliverablesEditor` component outside of the main function scope to prevent focus loss and render issues.
 
+### [Feature: Sub-Award Pools & Enhanced Editing]
+* **Added:** `utils/financialCalculations.ts` to centralize math.
+* **Refactor:** `GrantManager.tsx` separated "Primary Deliverables" from "Sub-Award" logic.
+* **Logic:** * "0.0: Sub-Award" deliverable is treated as a funding pool.
+    * Community Distributions Header calculates: `Pool - Allocated = Remaining`.
+* **UI:** * Right-aligned Status Dropdowns.
+    * Added `HighContrastCurrencyInput` for better comma formatting.
+    * Added `NotesSection` (timestamped logs) to Grants, Deliverables, and Communities.
+    * Added `DeliverableModal` supporting Start/End/Completion dates.
+    * Restored Attachments to Grant Details and Reports tabs.
+
 ---
 
 ## 4. Current "To-Do" / Known State
-* **Sub-Recipient Management:** Fully functional in Tree View (Add/Edit/Delete) and Edit View.
-* **Expenditures:** Fully editable/deletable in all views.
-* **Reporting:** CSV Download and Pie Charts are active.
+* **Sub-Recipient Management:** Fully functional. Sub-Awards draw from a specific deliverable pool.
+* **Expenditures:** Fully editable/deletable.
+* **Reporting:** CSV Download, Pie Charts, and Attachments active.
+* **Database:** Uses `localStorage` (default). File-based persistence code exists in backup branches but is currently disabled for client simplicity.
