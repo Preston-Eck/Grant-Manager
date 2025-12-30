@@ -1,5 +1,12 @@
 export type GrantStatus = 'Draft' | 'Pending' | 'Active' | 'Closed' | 'Archived';
 
+export interface Note {
+  id: string;
+  date: string;
+  text: string;
+  author: string;
+}
+
 export interface BudgetCategory {
   id: string;
   name: string;
@@ -9,7 +16,6 @@ export interface BudgetCategory {
 
 export interface Deliverable {
   id: string;
-  // NEW: Robust typing to identify Sub-Awards programmatically
   type: 'Standard' | 'SubAward'; 
   sectionReference: string;
   description: string;
@@ -20,6 +26,7 @@ export interface Deliverable {
   completionDate?: string;
   status: 'Pending' | 'In Progress' | 'Completed' | 'Deferred';
   budgetCategories: BudgetCategory[];
+  notes?: Note[]; // NEW
 }
 
 export interface SubRecipient {
@@ -27,6 +34,7 @@ export interface SubRecipient {
   name: string;
   allocatedAmount: number;
   deliverables: Deliverable[];
+  notes?: Note[]; // NEW
 }
 
 export interface ComplianceReport {
@@ -35,6 +43,7 @@ export interface ComplianceReport {
   dueDate: string;
   type: 'Financial' | 'Programmatic' | 'Audit';
   status: 'Pending' | 'Submitted' | 'Overdue';
+  attachments?: string[]; // NEW
 }
 
 export interface Grant {
@@ -48,11 +57,14 @@ export interface Grant {
   status: GrantStatus;
   indirectCostRate: number;
   requiredMatchAmount: number;
-  deliverables: Deliverable[];
-  subRecipients: SubRecipient[];
+  
+  deliverables: Deliverable[]; 
+  subRecipients: SubRecipient[]; 
+  
   reports: ComplianceReport[];
   attachments: string[];
   auditLog: AuditEvent[];
+  notes?: Note[]; // NEW
 }
 
 export interface Expenditure {
@@ -93,7 +105,6 @@ export interface EmailTemplate {
   body: string;
 }
 
-// Configuration Types
 export interface AppSettings {
   dbPath: string;
   apiKey?: string;

@@ -13,12 +13,15 @@ export const getGrantStats = (grant: Grant, allExpenditures: Expenditure[]) => {
   const subAwardDeliverable = grant.deliverables.find(d => d.type === 'SubAward');
   const subAwardTotal = subAwardDeliverable ? (subAwardDeliverable.allocatedValue || 0) : 0;
 
-  // Unassigned = Total Award - (Standard Deliverables + The Money Reserved for SubAwards)
+  // Unassigned = Money not yet given to a deliverable or the sub-award pot
   const unassigned = (grant.totalAward || 0) - standardDeliverablesTotal - subAwardTotal;
+
+  // Balance = Money not yet spent from the total award
+  const balance = (grant.totalAward || 0) - totalSpent;
 
   return {
     totalSpent,
-    remainingBalance: (grant.totalAward || 0) - totalSpent,
+    balance,
     unassigned
   };
 };
@@ -31,7 +34,7 @@ export const getSubRecipientStats = (sub: SubRecipient, grantId: string, allExpe
   
   return {
     spent,
-    remainingAllocation: (sub.allocatedAmount || 0) - spent,
+    balance: (sub.allocatedAmount || 0) - spent,
     unassigned: (sub.allocatedAmount || 0) - allocatedToDeliverables
   };
 };
@@ -44,7 +47,7 @@ export const getDeliverableStats = (del: Deliverable, allExpenditures: Expenditu
 
   return {
     spent,
-    remaining: (del.allocatedValue || 0) - spent,
+    balance: (del.allocatedValue || 0) - spent,
     unassigned: (del.allocatedValue || 0) - allocatedToCategories
   };
 };
@@ -70,7 +73,8 @@ export const getSubAwardPotStats = (grant: Grant, allExpenditures: Expenditure[]
     return {
         totalPot,
         allocated: totalAllocatedToCommunities,
-        remainingToAllocate: totalPot - totalAllocatedToCommunities,
-        totalSpent: totalSpentByCommunities
+        unallocated: totalPot - totalAllocatedToCommunities,
+        totalSpent: totalSpentByCommunities,
+        balance: totalPot - totalSpentByCommunities // How much of the pot is left (accounting for spent)
     };
 };
