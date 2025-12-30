@@ -13,12 +13,12 @@ export interface Deliverable {
   description: string;
   allocatedValue: number;
   dueDate: string;
-  status: 'Pending' | 'In Progress' | 'Completed' | 'Deferred';
-  budgetCategories: BudgetCategory[];
-  // New Date Fields
+  // NEW: Date Fields
   startDate?: string;
   endDate?: string;
   completionDate?: string;
+  status: 'Pending' | 'In Progress' | 'Completed' | 'Deferred';
+  budgetCategories: BudgetCategory[];
 }
 
 // NEW: Sub-Recipient Structure

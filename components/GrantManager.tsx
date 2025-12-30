@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
-import { Grant, GrantStatus, Deliverable, ComplianceReport, BudgetCategory, Expenditure, SubRecipient } from '../types';
+import { Grant, GrantStatus, Deliverable, BudgetCategory, Expenditure, SubRecipient } from '../types';
 import { HighContrastInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Paperclip, FileText, X, Eye, User, FileDigit, Users, AlertTriangle, Check, ArrowLeft, Calendar, LayoutList } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, FileText, X, Eye, User, FileDigit, Users, LayoutList, ArrowLeft } from 'lucide-react';
 
 interface GrantManagerProps {
   onNavigate?: (tab: string, data?: any) => void;
@@ -96,6 +96,7 @@ const DeliverablesEditor = ({
         setEditingDel({ ...editingDel, budgetCategories: cats });
     };
 
+    // Sub-Award Check
     const isSubAward = editingDel?.sectionReference === '0.0' || editingDel?.description === 'Sub-Award';
 
     return (
@@ -501,7 +502,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                         <div className="flex items-center space-x-2">
                             <span className="font-semibold text-sm text-slate-700">{del.sectionReference}: {del.description}</span>
                             
-                            {/* Deliverable Status Dropdown (Right Aligned via ml-auto on parent container logic if applied, currently inline) */}
+                            {/* Deliverable Status Dropdown (Right Aligned via ml-auto logic on parent) */}
                             <select
                                 value={del.status}
                                 onClick={(e) => e.stopPropagation()}
@@ -549,10 +550,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                     <button 
                         onClick={(e) => {
                             e.stopPropagation();
-                            // If user clicks edit here, we can trigger a full edit modal if needed, 
-                            // but currently keeping the inline 'universal edit' for quick tweaks 
-                            // or we could replace this with the new DeliverablesEditor Modal if preferred.
-                            // For consistency with "View" mode, keeping Universal Edit for Name/Alloc only here.
                             openEditModal('del', del, (n, a) => {
                                 del.description = n;
                                 del.allocatedValue = a;
