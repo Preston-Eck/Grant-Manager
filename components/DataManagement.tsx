@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
-import { Download, Upload, Database, FolderOpen, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Download, Upload, Database, FolderOpen, CheckCircle, AlertTriangle, ArchiveRestore } from 'lucide-react';
 
 export const DataManagement: React.FC = () => {
   const [currentPath, setCurrentPath] = useState('');
@@ -37,6 +37,39 @@ export const DataManagement: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  // NEW: Recovery Function
+  const handleRecoverLegacyData = () => {
+    try {
+      const rawGrants = localStorage.getItem('eckerdt_grants');
+      const rawExp = localStorage.getItem('eckerdt_expenditures');
+      const rawTemplates = localStorage.getItem('eckerdt_templates');
+
+      if (!rawGrants && !rawExp) {
+        alert("No legacy data found in this browser/app instance.");
+        return;
+      }
+
+      const legacyData = {
+        grants: rawGrants ? JSON.parse(rawGrants) : [],
+        expenditures: rawExp ? JSON.parse(rawExp) : [],
+        templates: rawTemplates ? JSON.parse(rawTemplates) : [],
+        timestamp: new Date().toISOString()
+      };
+
+      const countGrants = legacyData.grants.length;
+      const countExp = legacyData.expenditures.length;
+
+      if (confirm(`Found ${countGrants} Grants and ${countExp} Expenditures from the old version.\n\nDo you want to import them into your currently selected database file?`)) {
+        db.importState(legacyData);
+        setStatus('Legacy data successfully recovered and saved to file!');
+        setTimeout(() => window.location.reload(), 2000);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error recovering data. Check console for details.");
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -70,6 +103,20 @@ export const DataManagement: React.FC = () => {
             <p className="text-sm text-slate-500">
               <span className="font-bold">Recommendation:</span> Select a folder in your <strong>Google Drive</strong> or <strong>Dropbox</strong> to enable automatic cloud backup and sync across devices.
             </p>
+          </div>
+
+          {/* Legacy Recovery Section */}
+          <div className="pt-6 border-t border-slate-100 space-y-4">
+             <div className="flex items-center space-x-2">
+                <ArchiveRestore size={20} className="text-amber-600"/>
+                <h3 className="text-lg font-bold text-slate-800">Data Recovery</h3>
+             </div>
+             <p className="text-sm text-slate-600">
+                If you recently updated the app and see empty data, your old data might still be in the browser cache. Use this to move it to your new file database.
+             </p>
+             <button onClick={handleRecoverLegacyData} className="flex items-center text-amber-700 hover:text-white hover:bg-amber-600 border border-amber-200 bg-amber-50 px-4 py-2 rounded-lg transition-colors font-bold">
+               <ArchiveRestore size={18} className="mr-2"/> Recover Legacy Data from LocalStorage
+             </button>
           </div>
 
           {/* Manual Backup */}
