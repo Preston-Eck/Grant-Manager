@@ -39,7 +39,10 @@ export const Reporting: React.FC = () => {
 
   // Helper to look up names from IDs
   const getDeliverableName = (id: string) => selectedGrant?.deliverables.find(d => d.id === id)?.description || 'Unassigned';
-  const getCategoryName = (dId: string, cId: string) => selectedGrant?.deliverables.find(d => d.id === dId)?.budgetCategories.find(c => c.id === cId)?.name || 'Unassigned';
+  const getCategoryName = (dId: string, cId: string) => {
+      if (cId === 'direct') return 'Direct to Deliverable';
+      return selectedGrant?.deliverables.find(d => d.id === dId)?.budgetCategories.find(c => c.id === cId)?.name || 'Unassigned';
+  };
 
   // Chart Logic
   const expendituresByCategory = expenditures.reduce((acc, t) => {

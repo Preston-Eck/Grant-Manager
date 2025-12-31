@@ -69,6 +69,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
 
   const selectedDeliverable = availableDeliverables.find(d => d.id === form.deliverableId);
   const availableCategories = selectedDeliverable?.budgetCategories || [];
+  const hasCategories = availableCategories.length > 0;
 
   const relevantHistory = form.grantId ? expenditures.filter(e => e.grantId === form.grantId) : expenditures;
   const uniqueVendors = Array.from(new Set(relevantHistory.map(e => e.vendor))).sort();
@@ -88,10 +89,21 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
   };
 
   const handleSubmit = async () => {
-    if(!form.grantId || !form.deliverableId || !form.categoryId) {
-        alert("Please select a Grant, Deliverable, and Budget Category.");
+    if(!form.grantId || !form.deliverableId) {
+        alert("Please select a Grant and Deliverable.");
         return;
     }
+    
+    // Logic for "Direct" category assignment
+    if (!form.categoryId) {
+        if (availableCategories.length === 0) {
+            form.categoryId = 'direct';
+        } else {
+            alert("Please select a Budget Category.");
+            return;
+        }
+    }
+
     if(!form.vendor || form.amount === undefined || form.amount === 0) {
         alert("Vendor and Amount are required.");
         return;
@@ -207,7 +219,7 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
           grantId: data.grantId,
           subRecipientId: data.subRecipientId || undefined,
           deliverableId: data.deliverableId || '',
-          categoryId: data.categoryId || '',
+          categoryId: data.categoryId || 'direct', // Default if missing
           date: data.date,
           vendor: data.vendor,
           amount: parseFloat(data.amount),
@@ -241,7 +253,17 @@ export const ExpenditureInput: React.FC<ExpenditureInputProps> = ({ onNavigate, 
                 <HighContrastSelect label="1. Grant" options={[{value: '', label: '-- Select --'}, ...grants.map(g => ({ value: g.id, label: g.name }))]} value={form.grantId} onChange={e => setForm({...form, grantId: e.target.value, subRecipientId: '', deliverableId: '', categoryId: ''})} />
                 <HighContrastSelect label="2. Recipient Context" options={getRecipientOptions()} value={form.subRecipientId || ''} disabled={!form.grantId} onChange={e => setForm({...form, subRecipientId: e.target.value, deliverableId: '', categoryId: ''})} />
                 <HighContrastSelect label="3. Deliverable" options={[{value: '', label: '-- Select --'}, ...availableDeliverables.map(d => ({ value: d.id, label: d.sectionReference + ': ' + d.description }))]} value={form.deliverableId} disabled={!form.grantId} onChange={e => setForm({...form, deliverableId: e.target.value, categoryId: ''})} />
-                <HighContrastSelect label="4. Category" options={[{value: '', label: '-- Select --'}, ...availableCategories.map((c: BudgetCategory) => ({ value: c.id, label: c.name }))]} value={form.categoryId} disabled={!form.deliverableId} onChange={e => setForm({...form, categoryId: e.target.value})} />
+                <HighContrastSelect 
+                    label="4. Category" 
+                    options={
+                        hasCategories 
+                        ? [{value: '', label: '-- Select --'}, ...availableCategories.map((c: BudgetCategory) => ({ value: c.id, label: c.name }))]
+                        : [{value: 'direct', label: 'Direct to Deliverable (No Categories)'}]
+                    } 
+                    value={hasCategories ? form.categoryId : 'direct'} 
+                    disabled={!form.deliverableId || !hasCategories} 
+                    onChange={e => setForm({...form, categoryId: e.target.value})} 
+                />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

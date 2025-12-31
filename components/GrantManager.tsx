@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Grant, GrantStatus, Deliverable, BudgetCategory, Expenditure, SubRecipient, ComplianceReport, Note } from '../types';
 import { HighContrastInput, HighContrastCurrencyInput, HighContrastSelect, HighContrastTextArea } from './ui/Input';
-import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Users, LayoutList, ArrowLeft, X, FileText, Calendar, MessageSquare, Paperclip, FileDigit, User, Eye } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, ChevronRight, ChevronDown, Users, LayoutList, ArrowLeft, X, FileText, Calendar, MessageSquare, Paperclip, FileDigit, User, Eye, Layers } from 'lucide-react';
 import { getGrantStats, getDeliverableStats, getSubRecipientStats, getCategoryStats, getSubAwardPotStats } from '../utils/financialCalculations';
 
 interface GrantManagerProps {
@@ -177,16 +177,25 @@ const DeliverableModal = ({
     );
 };
 
-const DeliverablesListEditor = ({ deliverables, onChange, title }: { deliverables: Deliverable[], onChange: (d: Deliverable[]) => void, title?: string }) => {
+const DeliverablesListEditor = ({ deliverables, onChange, title, onEditDetails }: { deliverables: Deliverable[], onChange: (d: Deliverable[]) => void, title?: string, onEditDetails?: (d: Deliverable) => void }) => {
     return (
         <div className="space-y-4">
             {title && <h4 className="text-sm font-bold text-slate-500 uppercase border-b border-slate-200 pb-2">{title}</h4>}
             {deliverables.map((del, idx) => (
-                 <div key={del.id} className="bg-slate-50 p-4 rounded border flex gap-4 items-end">
-                    <div className="w-20"><HighContrastInput label="Ref" value={del.sectionReference} onChange={e => {const d=[...deliverables]; d[idx].sectionReference=e.target.value; onChange(d)}} /></div>
-                    <div className="flex-1"><HighContrastInput label="Description" value={del.description} onChange={e => {const d=[...deliverables]; d[idx].description=e.target.value; onChange(d)}} /></div>
-                    <div className="w-32"><HighContrastCurrencyInput label="Allocated ($)" value={del.allocatedValue} onChange={e => {const d=[...deliverables]; d[idx].allocatedValue=parseFloat(e.target.value)||0; onChange(d)}} /></div>
-                    <button onClick={() => {const d=[...deliverables]; d.splice(idx,1); onChange(d)}} className="text-slate-400 hover:text-red-500 mb-2"><Trash2 size={20}/></button>
+                 <div key={del.id} className="bg-slate-50 p-4 rounded border flex flex-col gap-3">
+                    <div className="flex gap-4 items-end">
+                        <div className="w-20"><HighContrastInput label="Ref" value={del.sectionReference} onChange={e => {const d=[...deliverables]; d[idx].sectionReference=e.target.value; onChange(d)}} /></div>
+                        <div className="flex-1"><HighContrastInput label="Description" value={del.description} onChange={e => {const d=[...deliverables]; d[idx].description=e.target.value; onChange(d)}} /></div>
+                        <div className="w-32"><HighContrastCurrencyInput label="Allocated ($)" value={del.allocatedValue} onChange={e => {const d=[...deliverables]; d[idx].allocatedValue=parseFloat(e.target.value)||0; onChange(d)}} /></div>
+                        <button onClick={() => {const d=[...deliverables]; d.splice(idx,1); onChange(d)}} className="text-slate-400 hover:text-red-500 mb-2 p-2"><Trash2 size={20}/></button>
+                    </div>
+                    {onEditDetails && (
+                        <div className="flex justify-end border-t border-slate-200 pt-2">
+                            <button onClick={() => onEditDetails(del)} className="text-xs font-bold text-brand-600 flex items-center hover:underline">
+                                <Layers size={14} className="mr-1"/> Manage Categories & Details
+                            </button>
+                        </div>
+                    )}
                  </div>
             ))}
             <button onClick={() => onChange([...deliverables, {id:crypto.randomUUID(), type:'Standard', sectionReference:'', description:'', allocatedValue:0, dueDate:'', status:'Pending', budgetCategories:[]}])} className="text-brand-600 font-bold text-sm flex items-center"><Plus size={16} className="mr-1"/> Add Deliverable</button>
@@ -208,7 +217,6 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     const [expandedContexts, setExpandedContexts] = useState<Set<string>>(new Set());
     const [expandedSubRecipients, setExpandedSubRecipients] = useState<Set<string>>(new Set());
     const [expandedDeliverables, setExpandedDeliverables] = useState<Set<string>>(new Set());
-    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
     
     // Modals
     const [modalData, setModalData] = useState<{ del: Deliverable | null, isOpen: boolean, onSave: (d: Deliverable) => void }>({ del: null, isOpen: false, onSave: () => {} });
@@ -257,6 +265,30 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
             await db.deleteGrant(id);
             refresh();
         }
+    };
+
+    const handleModalSaveInEditMode = (updatedDel: Deliverable, subRecipientId?: string) => {
+        if (subRecipientId) {
+            // Update sub-recipient deliverable
+            const subs = [...(currentGrant.subRecipients || [])];
+            const subIndex = subs.findIndex(s => s.id === subRecipientId);
+            if (subIndex > -1) {
+                const delIndex = subs[subIndex].deliverables.findIndex(d => d.id === updatedDel.id);
+                if (delIndex > -1) {
+                    subs[subIndex].deliverables[delIndex] = updatedDel;
+                    setCurrentGrant({ ...currentGrant, subRecipients: subs });
+                }
+            }
+        } else {
+            // Update primary deliverable
+            const dels = [...(currentGrant.deliverables || [])];
+            const delIndex = dels.findIndex(d => d.id === updatedDel.id);
+            if (delIndex > -1) {
+                dels[delIndex] = updatedDel;
+                setCurrentGrant({ ...currentGrant, deliverables: dels });
+            }
+        }
+        setModalData({ del: null, isOpen: false, onSave: () => {} });
     };
 
     // --- Attachments & Notes ---
@@ -478,6 +510,7 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
     const renderDeliverableNode = (grant: Grant, del: Deliverable, subRecipientId?: string) => {
         const dStats = getDeliverableStats(del, expenditures);
         const isDelExpanded = expandedDeliverables.has(del.id);
+        const hasCategories = del.budgetCategories && del.budgetCategories.length > 0;
 
         return (
             <div key={del.id} className="border-b border-slate-100 last:border-0 bg-white">
@@ -498,6 +531,12 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                     <span>Spent: ${dStats.spent.toLocaleString()}</span>
                                     <span className="text-slate-400">|</span>
                                     <span className={dStats.balance < -0.01 ? 'text-red-600 font-bold' : 'text-green-600 font-bold'}>Remaining: ${dStats.balance.toLocaleString()}</span>
+                                    {hasCategories && (
+                                        <>
+                                            <span className="text-slate-400">|</span>
+                                            <span className={dStats.unassigned < -0.01 ? 'text-red-600 font-bold' : 'text-blue-600'}>To Allocate: ${dStats.unassigned.toLocaleString()}</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -528,6 +567,13 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                         <span className="text-xs text-slate-500">Spent: ${cStats.spent.toLocaleString()}</span>
                                         <button onClick={() => jumpToaddExpenditure(grant.id, del.id, cat.id, subRecipientId)} className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded hover:bg-brand-200">+ Exp</button>
                                         <button onClick={() => openSimpleEditModal('cat', cat, async (n,a) => { cat.name=n; cat.allocation=a; await db.saveGrant(grant); refresh(); })} className="text-slate-300 hover:text-brand-600 ml-1"><Edit2 size={12}/></button>
+                                        <button onClick={async () => {
+                                            if(confirm(`Delete category ${cat.name}?`)) {
+                                                del.budgetCategories = del.budgetCategories.filter(c => c.id !== cat.id);
+                                                await db.saveGrant(grant);
+                                                refresh();
+                                            }
+                                        }} className="text-slate-300 hover:text-red-500 ml-1"><Trash2 size={12}/></button>
                                     </div>
                                 </div>
                             );
@@ -606,6 +652,13 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                                     s[i].deliverables = d;
                                                     setCurrentGrant({...currentGrant, subRecipients:s});
                                                 }}
+                                                onEditDetails={(del) => {
+                                                    setModalData({
+                                                        del,
+                                                        isOpen: true,
+                                                        onSave: (d) => handleModalSaveInEditMode(d, sub.id)
+                                                    });
+                                                }}
                                             />
                                         </div>
                                     </div>
@@ -624,6 +677,13 @@ export const GrantManager: React.FC<GrantManagerProps> = ({ onNavigate }) => {
                                             const subAward = currentGrant.deliverables?.find(d => d.type === 'SubAward');
                                             const newDels = subAward ? [...updated, subAward] : updated;
                                             setCurrentGrant({...currentGrant, deliverables: newDels});
+                                        }}
+                                        onEditDetails={(del) => {
+                                            setModalData({
+                                                del,
+                                                isOpen: true,
+                                                onSave: (d) => handleModalSaveInEditMode(d)
+                                            });
                                         }}
                                     />
                                 </div>

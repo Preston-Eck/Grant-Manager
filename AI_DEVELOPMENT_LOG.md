@@ -92,10 +92,7 @@
 * **Indirect Costs (IDC):** Added "Apply Indirect Cost" checkbox to the Expenditure Input. When checked, it automatically generates a second transaction for the overhead amount based on the grant's configured IDC rate.
 * **Audit Logs:** Implemented `logAudit` in `dbService`. Critical actions (Create/Update/Delete) now write to a persistent, timestamped `auditLog` array on the Grant object.
 
----
-
-## 4. Current "To-Do" / Known State
-* **Sub-Recipient Management:** Fully functional. Sub-Awards draw from a specific deliverable pool.
-* **Expenditures:** Fully editable/deletable.
-* **Reporting:** CSV Download, Pie Charts, and Attachments active.
-* **Database:** Uses `localStorage` (default). File-based persistence code exists in backup branches but is currently disabled for client simplicity.
+### [Feature: Direct Deliverable Spending]
+* **Logic Change:** Deliverables with no budget categories are now treated as single budget items.
+* **UI Update:** "To Allocate" warning is hidden in `GrantManager` if a deliverable has no categories.
+* **Data Entry:** `ExpenditureInput` now allows selecting "Direct to Deliverable (No Categories)" in the Category dropdown, assigning a special `direct` ID to the transaction.
