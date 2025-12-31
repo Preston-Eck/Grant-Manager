@@ -43,6 +43,42 @@ class DBService {
     await window.electronAPI.saveSettings({ ...settings, dbPath: path });
   }
 
+  // NEW: Load existing DB without overwriting
+  async switchDatabase(path: string) {
+    this.dbPath = path;
+    await this.load();
+    const settings = await window.electronAPI.getSettings();
+    await window.electronAPI.saveSettings({ ...settings, dbPath: path });
+  }
+
+  // NEW: Merge logic for importing data
+  async mergeData(importedData: any) {
+      if (!this.cache) await this.load();
+      
+      // Helper to merge arrays unique by ID
+      const mergeUnique = (current: any[], incoming: any[]) => {
+          const map = new Map(current.map(i => [i.id, i]));
+          incoming.forEach(i => {
+              if (!map.has(i.id)) {
+                  map.set(i.id, i);
+              }
+          });
+          return Array.from(map.values());
+      };
+
+      if (importedData.grants) {
+          this.cache.grants = mergeUnique(this.cache.grants || [], importedData.grants);
+      }
+      if (importedData.expenditures) {
+          this.cache.expenditures = mergeUnique(this.cache.expenditures || [], importedData.expenditures);
+      }
+      if (importedData.templates) {
+          this.cache.templates = mergeUnique(this.cache.templates || [], importedData.templates);
+      }
+      
+      await this.save();
+  }
+
   // --- Helpers ---
   private logAudit(grantId: string, action: string, details: string) {
       if (!this.cache) return;
@@ -51,7 +87,7 @@ class DBService {
           if (!grant.auditLog) grant.auditLog = [];
           const event: AuditEvent = {
               date: new Date().toISOString(),
-              user: 'System User', // In a real app, this would be the logged-in user
+              user: 'System User', 
               action,
               details
           };

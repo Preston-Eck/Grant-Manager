@@ -65,6 +65,16 @@ app.whenReady().then(() => {
     return result.canceled ? null : result.filePath;
   });
 
+  // Open Existing Database Handler
+  ipcMain.handle('open-db-file', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Existing Database File',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON Database', extensions: ['json'] }]
+    });
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+  });
+
   ipcMain.handle('get-settings', () => getAppConfig());
   
   ipcMain.handle('save-settings', (event, settings) => {

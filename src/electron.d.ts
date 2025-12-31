@@ -6,6 +6,7 @@ export interface AppSettings {
 export interface ElectronAPI {
   // Settings & DB
   selectDbPath: () => Promise<string | null>;
+  openDbFile: () => Promise<string | null>; // NEW
   getSettings: () => Promise<AppSettings>;
   saveSettings: (settings: AppSettings) => Promise<boolean>;
   
