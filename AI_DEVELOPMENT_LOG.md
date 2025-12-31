@@ -96,3 +96,9 @@
 * **Logic Change:** Deliverables with no budget categories are now treated as single budget items.
 * **UI Update:** "To Allocate" warning is hidden in `GrantManager` if a deliverable has no categories.
 * **Data Entry:** `ExpenditureInput` now allows selecting "Direct to Deliverable (No Categories)" in the Category dropdown, assigning a special `direct` ID to the transaction.
+
+### [Feature: Database Import & Sync]
+* **Issue:** Clients were forced to create a new DB on every install, losing access to shared Drive files.
+* **Backend:** Added `ipcMain.handle('open-db-file')` to allow selecting an existing JSON file without overwriting it.
+* **Service:** Added `db.switchDatabase()` to change the active file path and `db.mergeData()` to import records from an external JSON file (handling ID de-duplication).
+* **UI:** Updated `DataManagement.tsx` to split "Connect to Existing Database" (Sync) from "Create New Database" (Reset). Added "Import/Merge" button for consolidating offline work.
